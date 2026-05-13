@@ -68,21 +68,31 @@ uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
 
 ## Running the Web Interface
 
-The frontend is a real-time dashboard built into the FastAPI backend:
+The frontend is a **Next.js React** app that talks to the FastAPI backend via REST + WebSocket.
 
+### Terminal 1: Start the Backend API
+
+```bash
+uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
 ```
-http://localhost:8000
+
+### Terminal 2: Start the Frontend (Next.js)
+
+```bash
+cd frontend
+npm run dev
 ```
+
+Open **http://localhost:3000** in your browser.
 
 ### How to Use
 
-1. Open the dashboard in your browser
-2. Enter a topic (e.g., "Quantum Computing", "Climate Change")
-3. Click **Generate Content**
-4. Watch the pipeline stages light up in real-time:
+1. Enter a topic (e.g., "Quantum Computing", "Climate Change")
+2. Click **Generate Content**
+3. Watch the 5 pipeline stages light up in real-time:
    - 🔍 Research → 📋 Planning → ✍️ Writing → 📝 Editing → ✨ Optimization
-5. Each panel fills with output as agents complete
-6. Final result appears with edit scores
+4. Each panel fills with output as agents complete
+5. Final result appears with edit scores
 
 > **Note:** Phase 1 uses dummy agents that return hardcoded data (no API key needed).
 > For real AI-generated content, set `GEMINI_API_KEY` in `.env` and restart.
@@ -91,15 +101,16 @@ http://localhost:8000
 ### Architecture
 
 ```
-Browser ──HTTP──> FastAPI ──BackgroundTask──> PipelineRunner
-  │                                                  │
-  └──── WebSocket <── QueueService <── stage updates ─┘
+Terminal 1: FastAPI (port 8000)          Terminal 2: Next.js (port 3000)
+┌──────────────────────────────┐        ┌──────────────────────────┐
+│  GET /health                 │◄───────│  http://localhost:3000   │
+│  POST /generate              │────────│  Submit topic → job_id   │
+│  GET /status/{job_id}        │────────│  Poll progress           │
+│  GET /result/{job_id}        │────────│  Get final output        │
+│  WS  /ws/{job_id}            │════════│  Real-time stage updates │
+│  BackgroundTasks → Pipeline  │         │                          │
+└──────────────────────────────┘        └──────────────────────────┘
 ```
-
-- `POST /generate` — submits topic, launches background pipeline
-- `WS /ws/{job_id}` — streams real-time stage progress
-- `GET /status/{job_id}` — polls current status
-- `GET /result/{job_id}` — retrieves final output
 
 ## Running with Docker
 

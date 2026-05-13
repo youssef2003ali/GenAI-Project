@@ -1,11 +1,9 @@
 """FastAPI application entrypoint. Phase 1: in-memory queue, no real DB."""
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from .routers import health, jobs, ws
 from .services.queue import get_queue
@@ -43,8 +41,3 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(jobs.router)
 app.include_router(ws.router)
-
-# Serve frontend static files
-_frontend_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'frontend')
-if os.path.isdir(_frontend_dir):
-    app.mount('/', StaticFiles(directory=_frontend_dir, html=True), name='frontend')

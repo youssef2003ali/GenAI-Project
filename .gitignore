@@ -78,6 +78,12 @@ lightrag/data/
 lightrag/logs/
 lightrag/index/
 
+# ── Next.js / Node ──
+node_modules/
+.next/
+out/
+npm-debug.log*
+
 # ── ADK Agents ──
 .adk/
 .adk_env/
