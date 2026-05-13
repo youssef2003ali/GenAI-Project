@@ -70,36 +70,39 @@ uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
 
 The frontend is a **Next.js React** app that talks to the FastAPI backend via REST + WebSocket.
 
-### Terminal 1: Start the Backend API
+### Quick Start
 
 ```bash
-# Default (configurable via HOST/PORT in .env):
+# Terminal 1: Backend (reads HOST/PORT from .env)
 python run_backend.py
 
-# Or directly with uvicorn:
-uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
-
-# Custom port:
-python run_backend.py --port 8080
-python run_backend.py --host 127.0.0.1 --port 9000
+# Terminal 2: Frontend (reads PORT/FRONTEND_PORT from ../.env automatically)
+cd frontend && npm run dev
 ```
 
-### Terminal 2: Start the Frontend (Next.js)
+Open **http://localhost:3000** in your browser.
+
+### Change Ports (edit `.env` only)
+
+```env
+# .env at project root
+HOST=0.0.0.0        # Backend bind address
+PORT=8000           # Backend port
+FRONTEND_PORT=3000  # Frontend port
+```
+
+Change any value, restart both processes — done.
+
+### Manual Overrides
 
 ```bash
-cd frontend
+# Backend: CLI flags override .env
+python run_backend.py --port 8080 --host 127.0.0.1
 
-# Default port 3000:
-npm run dev
-
-# Custom port (Next.js respects PORT env var):
+# Frontend: env vars override .env
 PORT=3001 npm run dev
-
-# Connect to a backend on a different port:
-NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
+NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev  # custom backend
 ```
-
-Open **http://localhost:3000** (or your custom port) in your browser.
 
 ### How to Use
 
