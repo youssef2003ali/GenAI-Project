@@ -1,4 +1,4 @@
-"""Background pipeline worker. Runs ADK + Gemini when API key available,
+﻿"""Background pipeline worker. Runs ADK + Gemini when API key available,
 falls back to Phase 1 dummy agents. Streams progress via the queue."""
 
 import logging
@@ -32,6 +32,15 @@ class PipelineWorker:
                 'progress': {},
             })
 
+            # Stream each agent's output to the queue in real-time
+            async def _on_agent_complete(agent_name, output_text, ctx):
+                await self._queue.update_job(job_id, {
+                    'status': 'running',
+                    'current_agent': agent_name.value,
+                    'progress': {'output': output_text},
+                    'stage_output': output_text,
+                })
+
             # Try ADK + Gemini first
             ctx = None
             from .adk_pipeline import create_adk_pipeline_runner
@@ -39,7 +48,7 @@ class PipelineWorker:
 
             if runner:
                 logger.info(f'Job {job_id}: using ADK + Gemini pipeline')
-                ctx = await runner.run(job_id=job_id, topic=topic)
+                ctx = await runner.run(job_id=job_id, topic=topic, progress_callback=_on_agent_complete)
             else:
                 # Fall back to Phase 1 dummy agents
                 logger.info(f'Job {job_id}: using Phase 1 dummy agents')
@@ -56,7 +65,7 @@ class PipelineWorker:
                 runner.register_agent(AgentName.WRITING, WritingAgent())
                 runner.register_agent(AgentName.EDITING, EditingAgent())
                 runner.register_agent(AgentName.OPTIMIZATION, OptimizationAgent())
-                ctx = await runner.run(job_id=job_id, topic=topic)
+                ctx = await runner.run(job_id=job_id, topic=topic, progress_callback=_on_agent_complete)
 
             # Store results
             result_data = {

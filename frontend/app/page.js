@@ -61,6 +61,7 @@ export default function Home() {
 
     try {
       const { job_id } = await submitTopic(topic);
+      setState(prev => ({ ...prev, jobId: job_id }));
 
       // WebSocket
       wsRef.current = connectWs(job_id, {

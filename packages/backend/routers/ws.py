@@ -17,12 +17,18 @@ async def websocket_endpoint(websocket: WebSocket, job_id: str):
         while True:
             job = await queue_service.get_job(job_id)
             if job:
+                progress = job.get('progress') or {}
+                if not progress and job.get('stage_output') is not None:
+                    progress = {'output': job.get('stage_output')}
+
                 await websocket.send_json({
                     'job_id': job_id,
                     'status': job.get('status'),
                     'current_agent': job.get('current_agent'),
-                    'progress': job.get('progress', {}),
+                    'progress': progress,
+                    'stage_output': job.get('stage_output'),
                 })
+
                 if job.get('status') in ('completed', 'failed'):
                     break
             await asyncio.sleep(0.5)

@@ -21,7 +21,7 @@ if (fs.existsSync(rootEnv)) {
 
 // ── Derive API URL from .env ───────────────────────────────────────
 const BACKEND_HOST = process.env.HOST || '0.0.0.0';
-const BACKEND_PORT = process.env.PORT || '8000';
+const BACKEND_PORT = process.env.BACKEND_PORT || process.env.PORT || '8000';
 const FRONTEND_PORT = process.env.FRONTEND_PORT || '3000';
 
 // NEXT_PUBLIC_* vars are inlined at build time by Next.js.

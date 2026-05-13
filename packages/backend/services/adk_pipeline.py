@@ -218,13 +218,15 @@ class AdkGeminiBridge(ACSBaseAgent):
             ow = d.word_count if d else 500
             target_min = int(ow * 0.95)
             target_max = int(ow * 1.00)
+            edit_feedback = (
+                f'Coherence: {e.scores.coherence}/10, Relevance: {e.scores.relevance}/10, '
+                f'Completeness: {e.scores.completeness}/10\n'
+                f'Issues: {e.instructions or "None"}'
+            ) if e else 'No edit feedback available'
             return (
                 f'Topic: {T}\n\nYou are the OPTIMIZATION agent. Polish — DO NOT EXPAND.\n\n'
                 f'=== DRAFT ({ow} words) ===\n{d.content if d else ""}\n\n'
-                f'=== EDIT FEEDBACK ===\n'
-                f'Coherence: {e.scores.coherence}/10, Relevance: {e.scores.relevance}/10, '
-                f'Completeness: {e.scores.completeness}/10\n'
-                f'Issues: {e.instructions or "None"}\n\n'
+                f'=== EDIT FEEDBACK ===\n{edit_feedback}\n\n'
                 f'=== STRICT RULES ===\n'
                 f'1. Output MUST be {target_min}-{target_max} words.\n'
                 f'2. DO NOT add new content or remove facts.\n'
@@ -238,9 +240,12 @@ class AdkGeminiBridge(ACSBaseAgent):
     async def execute(self, inp):
         sid = f'{inp.job_id}-{self.name.value}'
         _ensure_adk()
-        await self._session_service.create_session(
-            app_name='acs_pipeline', user_id='acs_user', session_id=sid
-        )
+        try:
+            await self._session_service.create_session(
+                app_name='acs_pipeline', user_id='acs_user', session_id=sid
+            )
+        except Exception:
+            pass  # Session may already exist from a previous retry attempt
         msg = genai_types.Content(
             role='user', parts=[genai_types.Part(text=self._build_prompt(inp))]
         )
@@ -311,7 +316,7 @@ async def create_adk_pipeline_runner() -> PipelineRunner | None:
 
     _ensure_adk()
     session_service = InMemorySessionService()
-    MODEL = 'gemini-2.5-flash'
+    MODEL = settings.gemini_model
 
     pipeline_agents = {}
     for acs_name, ag_name, instr in [
@@ -329,5 +334,5 @@ async def create_adk_pipeline_runner() -> PipelineRunner | None:
     for name, agent in pipeline_agents.items():
         runner.register_agent(name, agent)
 
-    logger.info('Created ADK + Gemini 2.5 Flash pipeline runner')
+    logger.info(f'Created ADK + Gemini pipeline runner using model: {MODEL}')
     return runner

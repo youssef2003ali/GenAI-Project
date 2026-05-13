@@ -1,4 +1,4 @@
-"""Hub-spoke orchestrator. Routes tasks through agents in fixed order, handles retries."""
+﻿"""Hub-spoke orchestrator. Routes tasks through agents in fixed order, handles retries."""
 
 import asyncio
 import logging
@@ -24,13 +24,17 @@ class PipelineRunner:
         """Register an agent for pipeline execution."""
         self._agents[name] = agent
 
-    async def run(self, job_id: str, topic: str) -> PipelineContext:
+    async def run(self, job_id: str, topic: str, progress_callback=None) -> PipelineContext:
         """Execute the full pipeline and return the final PipelineContext."""
         context = PipelineContext()
         config = AgentConfig(
             provider=Provider.OPENROUTER,
             model=settings.orchestrator_model,
         )
+
+        async def _report(agent_name, output_text, ctx):
+            if progress_callback:
+                await progress_callback(agent_name, output_text, ctx)
 
         # Phase 1: Route through Research -> Planning -> Writing -> Editing -> Optimization
         pipeline_order = [
@@ -91,6 +95,9 @@ class PipelineRunner:
                 logger.warning(f'Agent {agent_name} failed after {max_attempts} attempts: {output.metadata.error}')
                 continue
 
+            # Report progress after successful agent execution
+            await _report(agent_name, output.result, context)
+
             # Handle retry loop from Editing Agent
             if agent_name == AgentName.EDITING and output.status == AgentStatus.RETRY:
                 max_retries = 3
@@ -112,6 +119,7 @@ class PipelineRunner:
                             config=config,
                         )
                         output = await writing_agent.execute(inp)
+                        await _report(agent_name, output.result, context)
 
                     # Clear edit so editing agent can write a fresh result
                     context.overwrite('edit', None)
@@ -126,6 +134,7 @@ class PipelineRunner:
                             config=config,
                         )
                         output = await editing_agent.execute(inp)
+                        await _report(agent_name, output.result, context)
 
         # Final: Optimization Agent
         opt_agent = self._agents.get(AgentName.OPTIMIZATION)
@@ -136,6 +145,7 @@ class PipelineRunner:
                 context=context,
                 config=config,
             )
-            await opt_agent.execute(inp)
+            output = await opt_agent.execute(inp)
+            await _report(AgentName.OPTIMIZATION, output.result, context)
 
         return context

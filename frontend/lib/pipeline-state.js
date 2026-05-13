@@ -39,7 +39,9 @@ export function applyWsUpdate(state, data) {
     next.stageStatus[data.current_agent] = 'active';
   }
   if (data.status) next.status = data.status;
-  if (data.progress?.output) {
+  if (data.stage_output != null) {
+    next.stageOutputs[data.current_agent || ''] = data.stage_output;
+  } else if (data.progress?.output) {
     next.stageOutputs[data.current_agent || ''] = data.progress.output;
   }
   return next;

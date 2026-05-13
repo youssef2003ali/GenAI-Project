@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     optimization_model: str = 'google/gemma-3-12b-it:free'
     orchestrator_model: str = 'nousresearch/hermes-3-405b-instruct:free'
     gemini_api_key: str = ''
+    gemini_model: str = 'gemini-2.5-flash'
 
     host: str = '0.0.0.0'
     port: int = 8000
