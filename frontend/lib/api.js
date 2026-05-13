@@ -1,8 +1,34 @@
 /**
  * API Client — handles all HTTP + WebSocket communication with the FastAPI backend.
  * SOLID: Single responsibility — network layer only.
+ *
+ * The API URL can be configured via NEXT_PUBLIC_API_URL env var.
+ * - In dev: http://localhost:8000 (or set NEXT_PUBLIC_API_URL=http://host:port)
+ * - In production: the Next.js rewrite in next.config.js proxies /api/*
+ * - WebSocket: derived from the API URL automatically
  */
-const BASE = '/api';
+
+function getBaseUrl() {
+  // In production, /api/* is rewritten by Next.js — use relative path
+  if (typeof window !== 'undefined' && !process.env.NEXT_PUBLIC_API_URL) {
+    return '/api';
+  }
+  return process.env.NEXT_PUBLIC_API_URL || '/api';
+}
+
+function getWsUrl() {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    // Direct connection to backend
+    const api = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, 'ws');
+    return api;
+  }
+  // Via Next.js rewrite
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/api`;
+}
+
+const BASE = getBaseUrl();
+const WS_BASE = typeof window !== 'undefined' ? getWsUrl() : '';
 
 export async function submitTopic(topic) {
   const res = await fetch(`${BASE}/generate`, {
@@ -27,8 +53,7 @@ export async function getResult(jobId) {
 }
 
 export function connectWs(jobId, handlers) {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws/${jobId}`);
+  const ws = new WebSocket(`${WS_BASE}/ws/${jobId}`);
 
   ws.onmessage = (event) => {
     try {

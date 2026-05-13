@@ -1,11 +1,14 @@
 /** @type {import('next').NextConfig} */
+
+// Backend API URL — configurable via NEXT_PUBLIC_API_URL env var or defaults to port 8000
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 const nextConfig = {
-  // Backend API runs on port 8000, frontend on 3000
   async rewrites() {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8000/:path*',
+        destination: `${API_URL}/:path*`,
       },
     ];
   },

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     orchestrator_model: str = 'nousresearch/hermes-3-405b-instruct:free'
     gemini_api_key: str = ''
 
+    host: str = '0.0.0.0'
+    port: int = 8000
+    frontend_port: int = 3000
+
     model_config = {'env_file': '.env', 'extra': 'ignore'}
 
 
