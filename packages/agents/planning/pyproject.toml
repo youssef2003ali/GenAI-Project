@@ -1,0 +1,9 @@
+[project]
+name = "acs-agent-planning"
+version = "0.1.0"
+description = "Planning Agent - structured outline generation"
+requires-python = ">=3.11"
+dependencies = ["acs-shared"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]

@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+WORKDIR /app
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copy workspace config and lockfile for dependency resolution
+COPY pyproject.toml uv.lock ./
+
+# Copy all package pyproject.toml files
+COPY packages/shared/pyproject.toml packages/shared/
+COPY packages/agents/research/pyproject.toml packages/agents/research/
+COPY packages/agents/planning/pyproject.toml packages/agents/planning/
+COPY packages/agents/writing/pyproject.toml packages/agents/writing/
+COPY packages/agents/editing/pyproject.toml packages/agents/editing/
+COPY packages/agents/optimization/pyproject.toml packages/agents/optimization/
+COPY packages/agents/orchestrator/pyproject.toml packages/agents/orchestrator/
+COPY packages/backend/pyproject.toml packages/backend/
+
+# Install dependencies from lockfile
+RUN uv sync --frozen
+
+# Copy source code (mounted as volume in dev mode)
+COPY . .
+
+EXPOSE 8000
+CMD ["uv", "run", "uvicorn", "packages.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

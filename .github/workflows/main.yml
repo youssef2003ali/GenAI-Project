@@ -1,0 +1,28 @@
+name: Production Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  full-suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: All tests
+        run: uv run pytest tests/ -v
+      - name: Build all Docker images
+        run: docker compose build
+
+  deploy-production:
+    needs: full-suite
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to production VPS
+        run: echo "Production deploy placeholder - SSH + pull + docker compose up -d"

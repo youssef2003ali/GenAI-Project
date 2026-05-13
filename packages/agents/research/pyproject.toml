@@ -1,0 +1,9 @@
+[project]
+name = "acs-agent-research"
+version = "0.1.0"
+description = "Research Agent - web search and content extraction"
+requires-python = ">=3.11"
+dependencies = ["acs-shared"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]

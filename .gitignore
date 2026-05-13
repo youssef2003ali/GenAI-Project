@@ -1,0 +1,108 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+*.so
+
+# ── Virtual Environment ──
+.venv/
+.venv_*/
+venv/
+venv_*/
+env/
+.env/
+.venv.bak/
+
+# ── uv ──
+uv.lock
+.cache/
+*.egg-info/
+
+# ── Environment & Secrets ──
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.cert
+*.crt
+**/service-account.json
+**/credentials.json
+**/credentials.*.json
+
+# Keep .env.example (template)
+!.env.example
+
+# ── IDE & Editors ──
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.sublime-workspace
+*.sublime-project
+
+# ── Testing ──
+.pytest_cache/
+pytest.log
+test_*.txt
+test_*.output
+.coverage
+htmlcov/
+.coverage.*
+coverage.xml
+*.coverage
+__pycache__/pytest*
+test_gemini_output.txt
+test_gemini_fixed_output.txt
+project_test_output.txt
+
+# ── Docker ──
+.docker/
+docker-compose.override.yml
+*.docker_context/
+
+# ── MLflow ──
+mlruns/
+mlflow/
+
+# ── LightRAG ──
+lightrag/data/
+lightrag/logs/
+lightrag/index/
+
+# ── ADK Agents ──
+.adk/
+.adk_env/
+adk_web_session/
+google_adk_*
+
+# ── Logs & Outputs ──
+*.log
+logs/
+output/
+out/
+temp/
+tmp/
+
+# ── Config & Local Overrides ──
+*.local.py
+*.local.toml
+config.local.yaml
+config.override.yaml
+
+# ── OpenCode IDE ──
+.opencode/
+
+# ── System ──
+*.pyc
+*.class
+*.manifest
+*.spec

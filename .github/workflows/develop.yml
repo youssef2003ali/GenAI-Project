@@ -1,0 +1,28 @@
+name: Develop Deploy
+
+on:
+  push:
+    branches: [develop]
+
+jobs:
+  full-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: Integration test
+        run: uv run pytest tests/integration/ -v
+      - name: Docker build check
+        run: docker compose -f docker-compose.dev.yml build
+
+  deploy-phase1:
+    needs: full-test
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to VPS
+        run: echo "Phase 1 deploy placeholder - SSH + docker compose up"

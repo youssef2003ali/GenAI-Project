@@ -1,0 +1,9 @@
+[project]
+name = "acs-agent-optimization"
+version = "0.1.0"
+description = "Optimization Agent - tone, style, and length refinement"
+requires-python = ">=3.11"
+dependencies = ["acs-shared"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]

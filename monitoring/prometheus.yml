@@ -1,0 +1,58 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'fastapi'
+    static_configs:
+      - targets: ['fastapi:8000']
+        labels:
+          service: 'backend'
+
+  - job_name: 'agent-research'
+    static_configs:
+      - targets: ['agent-research:8100']
+        labels:
+          service: 'research'
+
+  - job_name: 'agent-planning'
+    static_configs:
+      - targets: ['agent-planning:8101']
+        labels:
+          service: 'planning'
+
+  - job_name: 'agent-writing'
+    static_configs:
+      - targets: ['agent-writing:8102']
+        labels:
+          service: 'writing'
+
+  - job_name: 'agent-editing'
+    static_configs:
+      - targets: ['agent-editing:8103']
+        labels:
+          service: 'editing'
+
+  - job_name: 'agent-optimization'
+    static_configs:
+      - targets: ['agent-optimization:8104']
+        labels:
+          service: 'optimization'
+
+  - job_name: 'agent-orchestrator'
+    static_configs:
+      - targets: ['agent-orchestrator:8105']
+        labels:
+          service: 'orchestrator'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+        labels:
+          service: 'redis'
+
+  - job_name: 'lightrag'
+    static_configs:
+      - targets: ['lightrag:9621']
+        labels:
+          service: 'lightrag'

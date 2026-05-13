@@ -1,0 +1,117 @@
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - fastapi
+      - nextjs
+    networks:
+      - acs-network
+
+  fastapi:
+    build: ./packages/backend
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      - redis
+    command: ["uv", "run", "uvicorn", "packages.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - acs-network
+
+  nextjs:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-research:
+    build: ./packages/agents/research
+    ports:
+      - "8100:8100"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-planning:
+    build: ./packages/agents/planning
+    ports:
+      - "8101:8101"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-writing:
+    build: ./packages/agents/writing
+    ports:
+      - "8102:8102"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-editing:
+    build: ./packages/agents/editing
+    ports:
+      - "8103:8103"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-optimization:
+    build: ./packages/agents/optimization
+    ports:
+      - "8104:8104"
+    env_file: .env
+    networks:
+      - acs-network
+
+  agent-orchestrator:
+    build: ./packages/agents/orchestrator
+    ports:
+      - "8105:8105"
+    env_file: .env
+    networks:
+      - acs-network
+
+  lightrag:
+    image: hkuds/lightrag:latest
+    ports:
+      - "9621:9621"
+    volumes:
+      - lightrag-data:/app/data
+    networks:
+      - acs-network
+
+  mlflow:
+    image: mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    command: ["mlflow", "server", "--host", "0.0.0.0", "--port", "5000"]
+    networks:
+      - acs-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - acs-network
+
+volumes:
+  lightrag-data:
+  redis-data:
+
+networks:
+  acs-network:
+    driver: bridge

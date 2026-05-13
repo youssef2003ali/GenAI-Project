@@ -1,0 +1,45 @@
+[project]
+name = "agentic-content-system"
+version = "0.1.0"
+description = "Multi-agent content generation system"
+requires-python = ">=3.11"
+dependencies = [
+    "acs-shared",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "httpx>=0.27",
+    "google-adk>=1.33.0",
+]
+
+[tool.uv.workspace]
+members = [
+    "packages/shared",
+    "packages/agents/research",
+    "packages/agents/planning",
+    "packages/agents/writing",
+    "packages/agents/editing",
+    "packages/agents/optimization",
+    "packages/agents/orchestrator",
+    "packages/backend",
+]
+
+[tool.uv.sources]
+acs-shared = { workspace = true }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["packages/shared/src", "packages/agents"]
+asyncio_mode = "auto"

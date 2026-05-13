@@ -1,0 +1,9 @@
+[project]
+name = "acs-agent-orchestrator"
+version = "0.1.0"
+description = "Orchestrator Agent - pipeline coordination and routing"
+requires-python = ">=3.11"
+dependencies = ["acs-shared"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]

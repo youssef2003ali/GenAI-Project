@@ -1,0 +1,61 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches: [develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: Ruff lint
+        run: uv run ruff check packages/
+      - name: Ruff format check
+        run: uv run ruff format --check packages/
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: Run unit tests
+        run: uv run pytest tests/unit/ -v
+
+  schema-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: Validate schemas
+        run: uv run python -c "from acs_shared.schemas import AgentInput, AgentOutput, PipelineContext; print('Schema validation: PASSED')"
+
+  import-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.11"
+      - run: uv sync
+      - name: Check no direct LLM SDK imports
+        run: |
+          ! grep -r "import openrouter\|from openrouter\|import ollama\|from ollama\|import litellm\|from litellm" packages/agents/ --include="*.py" && echo "PASSED"
+
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6

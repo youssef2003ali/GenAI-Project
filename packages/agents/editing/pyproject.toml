@@ -1,0 +1,9 @@
+[project]
+name = "acs-agent-editing"
+version = "0.1.0"
+description = "Editing Agent - quality scoring and retry decisions"
+requires-python = ">=3.11"
+dependencies = ["acs-shared"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
