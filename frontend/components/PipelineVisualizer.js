@@ -20,7 +20,7 @@ export default function PipelineVisualizer({ stageStatus }) {
               <span className="stage-icon">{icon}</span>
               <span className="stage-label">{st.label}</span>
             </span>
-            {i < STAGES.length - 1 && <span className="arrow">\u2192</span>}
+            {i < STAGES.length - 1 && <span className="arrow">{'\u2192'}</span>}
           </span>
         );
       })}
