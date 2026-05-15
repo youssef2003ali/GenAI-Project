@@ -112,3 +112,5 @@ config.override.yaml
 *.class
 *.manifest
 *.spec
+
+.playwright-mcp/
