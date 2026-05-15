@@ -4,7 +4,7 @@ from .constants import Provider, AgentName, AgentStatus
 
 
 class AgentConfig(BaseModel):
-    provider: Provider = Provider.OPENROUTER
+    provider: Provider = Provider.MISTRAL
     model: str = ''
     temperature: float = 0.7
     max_tokens: int = 2048

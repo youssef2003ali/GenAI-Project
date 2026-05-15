@@ -47,6 +47,29 @@ export function applyWsUpdate(state, data) {
   return next;
 }
 
+export function applyChunk(state, agent, chunk) {
+  /** Append a streaming chunk to an agent's stage output. */
+  const next = { ...state, stageOutputs: { ...state.stageOutputs } };
+  const prev = next.stageOutputs[agent] || '';
+  next.stageOutputs[agent] = prev + chunk;
+  return next;
+}
+
+export function setAgentActive(state, agent) {
+  const next = { ...state, stageStatus: { ...state.stageStatus } };
+  if (next.currentAgent) next.stageStatus[next.currentAgent] = 'completed';
+  next.currentAgent = agent;
+  next.stageStatus[agent] = 'active';
+  return next;
+}
+
+export function setAgentDone(state, agent, output) {
+  const next = { ...state, stageStatus: { ...state.stageStatus }, stageOutputs: { ...state.stageOutputs } };
+  next.stageStatus[agent] = 'completed';
+  if (output) next.stageOutputs[agent] = output;
+  return next;
+}
+
 export function completeState(state, context, finalOutput) {
   const next = { ...state, stageStatus: { ...state.stageStatus } };
   if (next.currentAgent) next.stageStatus[next.currentAgent] = 'completed';

@@ -1,63 +1,122 @@
-# Member 4: Editing Agent Guide
+# Member 4 — Editing Agent Implementation Guide
 
-## Your Role
-You own the **Editing Agent** — the quality gate. Your agent evaluates the draft against the research and outline, scoring it on three dimensions. You decide PASS or RETRY. When you return RETRY, the pipeline loops back to Writing (max 3 retries) with your instructions.
+## Overview
 
-## Your Files
+The Editing Agent evaluates the draft on three quality dimensions (coherence, relevance, completeness) and decides whether it passes or needs a retry. This is the gatekeeper of content quality.
+
+## Files You Own
+
 | File | Purpose |
-|---|---|
-| `packages/agents/editing/agent.py` | **Your main file.** |
-| `prompts/editing.md` | Your scoring rubric prompt. |
+|------|---------|
+| `packages/agents/editing/agent.py` | Your agent implementation |
+| `packages/agents/editing/server.py` | A2A server (keep as-is) |
+| `packages/agents/editing/pyproject.toml` | Dependencies |
+| `prompts/editing.md` | Your prompt template |
 
-## Your Stage Output (`EditOutput`)
-```python
-{
-    'scores': EditScores(coherence=int, relevance=int, completeness=int),
-    'average': float,       # (coherence + relevance + completeness) / 3
-    'passed': bool,         # True if avg >= 7.0
-    'retry_count': int,     # Read from context.edit.retry_count if exists
-    'instructions': str | None,  # Specific improvement instructions for retry
-}
+## How It Works
+
+```
+AgentInput(topic, context) → EditingAgent.execute()
+  → 1. Read context.draft from Writing Agent
+  → 2. Load prompt from prompts/editing.md
+  → 3. Call LLM via self.generate_text(prompt)
+  → 4. Parse scores: coherence 0-10, relevance 0-10, completeness 0-10
+  → 5. Calculate average
+  → 6. If avg >= 7.0: status = SUCCESS (pass)
+     If avg < 7.0: status = RETRY (improvement needed)
+  → 7. input.context.set('edit', output)
+  → AgentOutput(result, metadata, status)
 ```
 
-## Scoring Rubric
+## Required Schemas
 
-| Dimension | What to Check |
-|---|---|
-| **Coherence** (0-10) | Logical flow, transitions between sections, paragraph structure |
-| **Relevance** (0-10) | Every paragraph relates to the topic and outline section |
-| **Completeness** (0-10) | ALL outline sections covered with adequate depth |
+```python
+class EditScores(BaseModel):
+    coherence: int      # 0-10
+    relevance: int      # 0-10
+    completeness: int   # 0-10
 
-## Implementation
+class EditOutput(BaseModel):
+    scores: EditScores
+    average: float
+    passed: bool
+    retry_count: int = 0
+    instructions: str | None = None    # Improvement instructions on retry
+```
+
+## Implementation Steps
+
+### Step 1: Read Draft
+```python
+draft_text = input.context.draft.content if input.context.draft else ''
+```
+
+### Step 2: Build Prompt
 ```python
 prompt = self.load_prompt('editing')
-full_prompt = f'''{prompt}
+prompt += f"""
+Topic: {input.topic}
+Draft:
+{draft_text}
 
-Research Facts: {input.context.research.facts}
-Outline: {[s.heading for s in input.context.outline.sections]}
-Draft: {input.context.draft.content}
-Word Count: {input.context.draft.word_count}
+Score this draft on three dimensions (0-10):
+- Coherence: logical flow and structure
+- Relevance: stays on topic
+- Completeness: covers all necessary points
 
-Score each dimension out of 10 with specific justification.'''
-result, tokens, latency = await self.model.generate_with_metrics(
-    prompt=full_prompt, config=input.config,
-)
-from acs_shared.utils import parse_edit_scores
-scores = parse_edit_scores(result)
-output = EditOutput(
-    scores=EditScores(**scores),
-    average=scores['average'],
-    passed=scores['passed'],
-    retry_count=(input.context.edit.retry_count if input.context.edit else 0) + 1,
-    instructions=scores.get('issues'),
-)
+Format your response exactly like:
+Coherence: 8
+Relevance: 7
+Completeness: 9
+Average: 8.0
+Decision: PASS (or RETRY if avg < 7.0)
+Issues: Specific improvement instructions if RETRY...
+"""
 ```
 
-## Retry Flow
-- If `avg >= 7.0`: Set `passed=True`, pipeline proceeds to Optimization
-- If `avg < 7.0`: Set `passed=False`, return `status=AgentStatus.RETRY`
-  - Pipeline resets `context.draft` + `context.edit` and re-runs Writing → Editing
-  - Your `instructions` tell Writing what to fix
-  - Max 3 retries
-- **Never give 10/10** — there are always improvements
-- Be specific: quote sentences, cite missing sections
+### Step 3: Call LLM
+```python
+text, tokens, latency = await self.generate_text(prompt)
+```
+
+### Step 4: Parse Scores
+Use `parse_edit_scores(text)` from `acs_shared.utils` as a starting point.
+
+### Step 5: Track Retry Count
+```python
+retry_count = (input.context.edit.retry_count if input.context.edit else 0)
+```
+
+### Step 6: Return Decision
+```python
+status = AgentStatus.SUCCESS if passed else AgentStatus.RETRY
+```
+
+## Architecture Doc Rules
+
+1. **Score on three dimensions**: coherence, relevance, completeness (0-10 each)
+2. **If average < 7.0**: set `status: RETRY`, include specific improvement instructions
+3. **Maximum 3 retries total** — after 3rd retry, pass forward regardless of score
+4. **The Orchestrator's LoopAgent handles the retry cycle** — just return the right status
+5. **Never hardcode model names** — read from input.config
+6. **Always use `self.generate_text()`** — never call LLM SDK directly
+
+## The Retry Loop
+
+```
+Pipeline → EditingAgent.execute()
+  → RETRY (avg < 7.0)
+  → LoopAgent re-runs: WritingAgent → EditingAgent
+  → RETRY again...
+  → Max 3 iterations → forced pass
+```
+
+## Testing
+
+```bash
+cd packages/agents
+uv run adk web
+# Select Editing Agent
+
+uv run pytest tests/unit/test_editing.py -v
+```

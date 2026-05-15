@@ -134,7 +134,8 @@ def parse_edit_scores(text: str) -> dict:
         ) / 3
 
     m = re.search(r'Decision:\s*(\w+)', text)
-    result['passed'] = m and m.group(1).strip().upper() == 'PASS'
+    if m:
+        result['passed'] = m.group(1).strip().upper() == 'PASS'
 
     # Capture issues/feedback section - everything after "Issues:" or "Feedback:" or "Improvements:"
     # until end or next section heading

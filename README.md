@@ -53,14 +53,14 @@ uv sync
 
 # 3. Copy environment template
 cp .env.example .env
-# Edit .env - add your GEMINI_API_KEY for real AI agent calls
-# Phase 1 dummy agents work without any API key
+# Edit .env - add your GEMINI_API_KEY or OPENROUTER_API_KEY for real AI agent calls
+# Phase 1 local agents work without any API key
 
 # 4. Install pre-commit hooks
 uv run pre-commit install
 
 # 5. Start the backend + frontend
-uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8080
 
 # 6. Open the frontend
 # Visit http://localhost:8000 in your browser

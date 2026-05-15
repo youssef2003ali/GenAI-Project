@@ -3,7 +3,7 @@ name = "acs-agent-orchestrator"
 version = "0.1.0"
 description = "Orchestrator Agent - pipeline coordination and routing"
 requires-python = ">=3.11"
-dependencies = ["acs-shared"]
+dependencies = ["acs-shared", "a2a-sdk>=0.1"]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

@@ -3,7 +3,7 @@ name = "acs-agent-writing"
 version = "0.1.0"
 description = "Writing Agent - full content generation from outline"
 requires-python = ">=3.11"
-dependencies = ["acs-shared"]
+dependencies = ["acs-shared", "a2a-sdk>=0.1"]
 
 [dependency-groups]
 dev = ["pytest>=8.0"]

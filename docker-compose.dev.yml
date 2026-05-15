@@ -1,12 +1,23 @@
 version: '3.8'
 
 services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    depends_on:
+      - fastapi
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - acs-network
+
   fastapi:
     build:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "8006:8000"
+      - "8000:8000"
     env_file: .env
     volumes:
       - ./packages:/app/packages
@@ -15,15 +26,15 @@ services:
     depends_on:
       - redis
     networks:
-      - acs-dev-network
+      - acs-network
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
     networks:
-      - acs-dev-network
+      - acs-network
 
 networks:
-  acs-dev-network:
+  acs-network:
     driver: bridge

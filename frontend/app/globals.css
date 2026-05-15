@@ -140,17 +140,44 @@ body {
   align-items: center;
 }
 
-.panel-body {
-  padding: 1rem;
-  max-height: 300px;
-  overflow-y: auto;
-  font-size: 0.85rem;
-  line-height: 1.7;
-  color: var(--text-secondary);
-}
-
-.panel-body pre { white-space: pre-wrap; font-family: inherit; }
+.panel-body { padding: 1rem; max-height: 400px; overflow-y: auto; font-size: 0.85rem; line-height: 1.7; color: var(--text-secondary); }
 .panel-empty { display: flex; align-items: center; justify-content: center; min-height: 100px; color: var(--text-muted); font-style: italic; }
+
+/* Markdown content styling */
+.markdown-content { line-height: 1.8; color: var(--text-secondary); }
+.markdown-content h1, .markdown-content h2, .markdown-content h3,
+.markdown-content h4 { color: var(--text-primary); margin: 1rem 0 0.5rem; font-weight: 600; }
+.markdown-content h1 { font-size: 1.15rem; }
+.markdown-content h2 { font-size: 1.05rem; }
+.markdown-content h3, .markdown-content h4 { font-size: 0.95rem; }
+.markdown-content p { margin-bottom: 0.75rem; }
+.markdown-content ul, .markdown-content ol { padding-left: 1.5rem; margin-bottom: 0.75rem; }
+.markdown-content li { margin-bottom: 0.25rem; }
+.markdown-content strong { color: var(--text-primary); }
+.markdown-content code {
+  background: var(--bg-card); padding: 0.15rem 0.4rem;
+  border-radius: 4px; font-size: 0.8rem; font-family: 'Courier New', monospace;
+}
+.markdown-content pre {
+  background: var(--bg-primary); border-radius: var(--radius);
+  padding: 0.75rem; margin-bottom: 0.75rem; overflow-x: auto;
+}
+.markdown-content pre code {
+  display: block; padding: 0; background: none;
+}
+.markdown-content a { color: var(--accent-blue); text-decoration: underline; }
+.markdown-content blockquote {
+  border-left: 3px solid var(--accent-blue); padding-left: 1rem;
+  margin: 0.75rem 0; color: var(--text-muted);
+}
+.markdown-content hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+/* Streaming cursor for active agent */
+.streaming-cursor::after {
+  content: '\u258A'; animation: blink 0.8s step-end infinite;
+  color: var(--accent-blue); margin-left: 2px;
+}
+@keyframes blink { 50% { opacity: 0; } }
 
 /* Scores */
 .scores-row { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }

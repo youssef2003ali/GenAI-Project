@@ -1,54 +1,119 @@
-# Member 5: Optimization Agent Guide
+# Member 5 — Optimization Agent Implementation Guide
 
-## Your Role
-You own the **Optimization Agent** — the final pipeline stage. Your agent polishes the draft for tone, style, and clarity. **You must NOT shorten or summarize** — preserve all content, sections, and facts.
+## Overview
 
-## Your Files
+The Optimization Agent is the final step in the pipeline. It polishes the draft content — refining tone, style, and length — while preserving all factual content. The output is the final deliverable shown to the user.
+
+## Files You Own
+
 | File | Purpose |
-|---|---|
-| `packages/agents/optimization/agent.py` | **Your main file.** |
-| `prompts/optimization.md` | Your polishing prompt. |
+|------|---------|
+| `packages/agents/optimization/agent.py` | Your agent implementation |
+| `packages/agents/optimization/server.py` | A2A server (keep as-is) |
+| `packages/agents/optimization/pyproject.toml` | Dependencies |
+| `prompts/optimization.md` | Your prompt template |
 
-## Your Stage Output (`FinalOutput`)
-```python
-{
-    'content': str,    # Polished article (90-110% of draft word count)
-    'word_count': int,
-    'tone': str,       # e.g., 'professional', 'academic', 'accessible'
-}
+## How It Works
+
+```
+AgentInput(topic, context) → OptimizationAgent.execute()
+  → 1. Read context.draft and context.edit from previous agents
+  → 2. Load prompt from prompts/optimization.md
+  → 3. Call LLM via self.generate_text(prompt) 
+  → 4. Determine tone from content
+  → 5. Create FinalOutput with word count
+  → 6. input.context.set('final', output)
+  → AgentOutput(result, metadata, status)
 ```
 
-## Critical Constraint
-The `PipelineRunner` checks length preservation. Your output must be **90-110% of the draft word count**. If you shrink or expand beyond this, the pipeline logs a warning.
+## Required Schemas
 
-## Implementation
+```python
+class FinalOutput(BaseModel):
+    content: str        # Clean, publishable content
+    word_count: int     # Number of words
+    tone: str           # e.g., 'professional', 'conversational', 'academic'
+```
+
+## Implementation Steps
+
+### Step 1: Read Draft + Edit Notes
+```python
+draft_text = input.context.draft.content if input.context.draft else ''
+edit_notes = input.context.edit.instructions if input.context.edit else ''
+```
+
+### Step 2: Build Prompt
 ```python
 prompt = self.load_prompt('optimization')
-draft = input.context.draft
-original_wc = draft.word_count
-full_prompt = f'''{prompt}
+prompt += f"""
+Topic: {input.topic}
+Draft:
+{draft_text}
+Edit Notes:
+{edit_notes}
 
-Draft ({original_wc} words):
-{draft.content}
-
-Edit Scores: Coherence={input.context.edit.scores.coherence}/10,
-             Relevance={input.context.edit.scores.relevance}/10,
-             Completeness={input.context.edit.scores.completeness}/10
-Feedback: {input.context.edit.instructions or "None"}
-
-CRITICAL: Output must be between {int(original_wc * 0.9)} and {int(original_wc * 1.1)} words.
-Do NOT add new content. Do NOT remove facts or sections.
-Only improve: word choice, sentence rhythm, transitions, tone.'''
-result, tokens, latency = await self.model.generate_with_metrics(
-    prompt=full_prompt, config=input.config,
-)
-output = FinalOutput(content=result, word_count=len(result.split()), tone='professional')
+Polish this content: 
+- Refine the tone (make it professional, clear, and engaging)
+- Improve sentence flow and readability
+- Preserve ALL factual content — do NOT change facts
+- Keep the same structure and length
+- Output clean, publishable text only
+"""
 ```
 
-## Polishing Rules
-- Improve word choice: replace weak verbs, remove redundancy
-- Improve sentence rhythm: vary sentence length, fix run-ons
-- Improve transitions: add connecting phrases between paragraphs
-- Preserve ALL: section headings, factual claims, examples, arguments
-- Tone target: Professional but accessible. Match the topic's subject matter
-- No meta-commentary — just the polished text
+### Step 3: Call LLM
+```python
+text, tokens, latency = await self.generate_text(prompt)
+```
+
+### Step 4: Determine Tone
+```python
+tone = 'professional'  # default
+if any(w in text.lower() for w in ['you know', 'hey', 'well']):
+    tone = 'conversational'
+elif any(w in text.lower() for w in ['study shows', 'research indicates']):
+    tone = 'academic'
+```
+
+### Step 5: Save & Return
+```python
+output = FinalOutput(content=text.strip(), word_count=len(text.split()), tone=tone)
+input.context.set('final', output)
+
+return AgentOutput(
+    job_id=input.job_id,
+    agent=AgentName.OPTIMIZATION,
+    result=output.content,
+    metadata=AgentMetadata(config=input.config, tokens_used=tokens, latency_ms=latency),
+    status=AgentStatus.SUCCESS,
+)
+```
+
+## Architecture Doc Rules
+
+1. **Preserve ALL factual content** from the draft — no hallucinations
+2. **Refine tone, style, and length only** — do not change substance
+3. **Final output is clean, publishable content** — no metadata or scores in output
+4. **Never hardcode model names** — read from `input.config`
+5. **Always use `self.generate_text()`** — never call LLM SDK directly
+
+## What "Polish" Means
+
+| Do | Don't |
+|----|-------|
+| Improve sentence structure | Add new facts |
+| Fix awkward phrasing | Remove existing facts |
+| Adjust tone for audience | Change the outline structure |
+| Fix grammar/spelling | Add opinions or commentary |
+| Improve flow between paragraphs | Expand beyond original scope |
+
+## Testing
+
+```bash
+cd packages/agents
+uv run adk web
+# Select Optimization Agent
+
+uv run pytest tests/unit/test_optimization.py -v
+```

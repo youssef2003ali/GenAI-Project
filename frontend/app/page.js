@@ -1,58 +1,147 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import { marked } from 'marked';
 import TopicInput from '@/components/TopicInput';
 import PipelineVisualizer from '@/components/PipelineVisualizer';
 import StagePanel from '@/components/StagePanel';
 import ScoreDisplay from '@/components/ScoreDisplay';
-import { submitTopic, getStatus, getResult, connectWs } from '@/lib/api';
+import { submitTopic } from '@/lib/api';
 import {
-  createInitialState, applyWsUpdate, completeState, failState, STAGES,
+  createInitialState, applyChunk, setAgentActive, setAgentDone,
+  completeState, failState, STAGES,
 } from '@/lib/pipeline-state';
 
 export default function Home() {
   const [state, setState] = useState(createInitialState);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef(null);
-  const pollRef = useRef(null);
+  const pingRef = useRef(null);
+
+  // Extract human-readable text from agent JSON outputs
+  function extractAgentOutput(agent, output) {
+    try {
+      const parsed = JSON.parse(output);
+      switch (agent) {
+        case 'research':
+          return parsed.summary || parsed.raw || output;
+        case 'planning':
+          let ot = `# ${parsed.title || ''}\n\n`;
+          (parsed.sections || []).forEach(s => {
+            ot += `## ${s.heading}\n`;
+            (s.key_points || []).forEach(kp => {
+              // Skip raw JSON code blocks, markdown fences
+              const clean = kp.replace(/```[\s\S]*?```/g, '').replace(/[{}"]/g, '').trim();
+              if (clean) ot += `- ${clean}\n`;
+            });
+            ot += '\n';
+          });
+          return ot || output;
+        case 'writing':
+          return parsed.content || output;
+        case 'editing':
+          return `**Coherence:** ${parsed.scores?.coherence ?? '-'}/10  
+**Relevance:** ${parsed.scores?.relevance ?? '-'}/10  
+**Completeness:** ${parsed.scores?.completeness ?? '-'}/10  
+**Average:** ${parsed.average?.toFixed(1) ?? '-'}  
+**Passed:** ${parsed.passed}${parsed.instructions ? `\n\n**Feedback:** ${parsed.instructions}` : ''}`;
+        case 'optimization':
+          return parsed.content || output;
+        default:
+          return output;
+      }
+    } catch {
+      return output; // Not JSON, return as-is
+    }
+  }
 
   const cleanup = useCallback(() => {
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
   }, []);
 
-  const fetchResult = useCallback(async (jobId) => {
-    try {
-      const result = await getResult(jobId);
-      const ctx = result.context || {};
+  const connectWs = useCallback((jobId) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/ws/${jobId}`;
+    const ws = new WebSocket(wsUrl);
 
-      // Build stage outputs from context
-      const outputs = {};
-      if (ctx.research) outputs.research = ctx.research.summary || JSON.stringify(ctx.research);
-      if (ctx.outline) {
-        let ot = `Title: ${ctx.outline.title || ''}\n`;
-        (ctx.outline.sections || []).forEach((s, i) => {
-          ot += `\n${i + 1}. ${s.heading}\n`;
-          (s.key_points || []).forEach(kp => { ot += `   - ${kp}\n`; });
-        });
-        outputs.planning = ot;
-      }
-      if (ctx.draft) outputs.writing = ctx.draft.content || JSON.stringify(ctx.draft);
-      if (ctx.edit) {
-        const e = ctx.edit;
-        let et = `Coherence: ${e.scores?.coherence ?? '-'}/10\nRelevance: ${e.scores?.relevance ?? '-'}/10\nCompleteness: ${e.scores?.completeness ?? '-'}/10\nAverage: ${e.average?.toFixed(1) ?? '-'}\nPassed: ${e.passed}`;
-        if (e.instructions) et += `\n\nFeedback: ${e.instructions}`;
-        outputs.editing = et;
-      }
-      if (ctx.final) outputs.optimization = ctx.final.content || JSON.stringify(ctx.final);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
 
-      // Set stage outputs before completing
-      const withOutputs = { ...state, stageOutputs: { ...state.stageOutputs, ...outputs } };
-      setState(completeState(withOutputs, ctx, ctx.final?.content || result.final_output || ''));
-    } catch (err) {
-      setState(prev => failState(prev, err.message));
-    }
-  }, [state]);
+        switch (data.type) {
+          case 'chunk':
+            setState(prev => applyChunk(prev, data.agent, data.content));
+            break;
+
+          case 'agent_start':
+            setState(prev => setAgentActive(prev, data.agent));
+            break;
+
+          case 'agent_done':
+            setState(prev => {
+              const clean = extractAgentOutput(data.agent, data.output);
+              return setAgentDone(prev, data.agent, clean);
+            });
+            break;
+
+          case 'pipeline_done':
+            cleanup();
+            setState(prev => {
+              const ctx = data.context || {};
+              const finalContent = data.final_output || '';
+              // Build clean stage outputs from context (for stages that weren't streamed)
+              const outputs = { ...prev.stageOutputs };
+              if (ctx.research && !outputs.research) {
+                outputs.research = extractAgentOutput('research', JSON.stringify(ctx.research));
+              }
+              if (ctx.outline && !outputs.planning) {
+                outputs.planning = extractAgentOutput('planning', JSON.stringify(ctx.outline));
+              }
+              if (ctx.draft && !outputs.writing) {
+                outputs.writing = extractAgentOutput('writing', JSON.stringify(ctx.draft));
+              }
+              if (ctx.final && !outputs.optimization) {
+                outputs.optimization = extractAgentOutput('optimization', JSON.stringify(ctx.final));
+              }
+              return completeState({ ...prev, stageOutputs: outputs }, ctx, finalContent);
+            });
+            setLoading(false);
+            break;
+
+          case 'pipeline_error':
+            cleanup();
+            setState(prev => failState(prev, data.error));
+            setLoading(false);
+            break;
+
+          case 'pong':
+            break; // keepalive
+        }
+      } catch (e) {
+        console.error('WS error:', e);
+      }
+    };
+
+    ws.onerror = () => {
+      setState(prev => failState(prev, 'WebSocket connection failed'));
+      setLoading(false);
+      cleanup();
+    };
+
+    ws.onclose = () => {
+      cleanup();
+    };
+
+    wsRef.current = ws;
+
+    // Ping every 15s to keep connection alive
+    pingRef.current = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send('ping');
+      }
+    }, 15000);
+  }, [cleanup]);
 
   const handleSubmit = useCallback(async (topic) => {
     cleanup();
@@ -63,47 +152,22 @@ export default function Home() {
       const { job_id } = await submitTopic(topic);
       setState(prev => ({ ...prev, jobId: job_id }));
 
-      // WebSocket
-      wsRef.current = connectWs(job_id, {
-        onStatus: (data) => setState(prev => applyWsUpdate(prev, data)),
-        onComplete: async () => {
-          cleanup();
-          await fetchResult(job_id);
-          setLoading(false);
-        },
-        onError: (err) => {
-          setState(prev => failState(prev, err.message));
-          setLoading(false);
-        },
-      });
-
-      // Poll as backup
-      pollRef.current = setInterval(async () => {
-        try {
-          const st = await getStatus(job_id);
-          setState(prev => applyWsUpdate(prev, st));
-          if (st.status === 'completed') {
-            clearInterval(pollRef.current);
-            await fetchResult(job_id);
-            setLoading(false);
-          }
-          if (st.status === 'failed') {
-            clearInterval(pollRef.current);
-            setState(prev => failState(prev, st.error || 'Pipeline failed'));
-            setLoading(false);
-          }
-        } catch { /* retry */ }
-      }, 2000);
+      // Connect WebSocket for push-based streaming
+      connectWs(job_id);
     } catch (err) {
       setState(prev => failState(prev, err.message));
       setLoading(false);
     }
-  }, [cleanup, fetchResult]);
+  }, [cleanup, connectWs]);
 
   const stageOutput = (id) => {
-    // If completed, show stored output; if active, show whatever we have
     return state.stageOutputs[id] || null;
   };
+
+  // Render final output as markdown
+  const finalHtml = state.finalOutput
+    ? marked.parse(state.finalOutput, { breaks: true, gfm: true })
+    : '';
 
   return (
     <>
@@ -145,8 +209,8 @@ export default function Home() {
             <h2 style={{ color: 'var(--accent-green)', marginBottom: '0.5rem' }}>
               {'\u2705'} Final Output
             </h2>
-            <div className="result-content">
-              <pre>{state.finalOutput}</pre>
+            <div className="result-content markdown-content">
+              <div dangerouslySetInnerHTML={{ __html: finalHtml }} />
             </div>
             <ScoreDisplay edit={state.context?.edit} />
           </div>

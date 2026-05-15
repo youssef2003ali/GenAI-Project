@@ -1,80 +1,104 @@
-# Member 2: Planning Agent Guide
+# Member 2 — Planning Agent Implementation Guide
 
-## Your Role
-You own the **Planning Agent** — the second pipeline stage. Your agent receives research output and must produce a structured outline. The Writing agent will follow your outline exactly, so quality here determines the entire article's structure.
+## Overview
 
-## Your Files
+The Planning Agent generates a structured outline from the research output. It creates 3-7 sections with key points, providing the blueprint for the Writing Agent.
+
+## Files You Own
+
 | File | Purpose |
-|---|---|
-| `packages/agents/planning/agent.py` | **Your main file.** Replace Phase 1 dummy logic. |
-| `packages/agents/planning/server.py` | A2A server. Do not modify. |
-| `packages/agents/planning/Dockerfile` | Container config. |
-| `packages/agents/planning/pyproject.toml` | Your dependencies. |
-| `prompts/planning.md` | Your agent's system prompt. |
+|------|---------|
+| `packages/agents/planning/agent.py` | Your agent implementation |
+| `packages/agents/planning/server.py` | A2A server (keep as-is) |
+| `packages/agents/planning/pyproject.toml` | Dependencies |
+| `prompts/planning.md` | Your prompt template |
 
-## Agent Contract
+## How It Works
 
-### Input
-Your `context` will have `context.research` populated with `ResearchOutput`.
-
-### Your Stage Output (`OutlineOutput`)
-```python
-{
-    'title': str,                           # Article title
-    'sections': list[OutlineSection] = [    # 5-8 sections recommended
-        {'heading': str, 'key_points': list[str]},
-        ...
-    ],
-}
+```
+AgentInput(topic, context) → PlanningAgent.execute()
+  → 1. Read context.research from previous agent
+  → 2. Query LightRAG for additional context (Phase 2)
+  → 3. Load prompt from prompts/planning.md
+  → 4. Call LLM via self.generate_text(prompt)
+  → 5. Parse LLM output → OutlineOutput
+  → 6. input.context.set('outline', output)
+  → AgentOutput(result, metadata, status)
 ```
 
-### `OutlineSection`
+## Required Schemas
+
 ```python
-{
-    'heading': str,          # Section title (e.g., "Key Challenges")
-    'key_points': list[str], # 3-5 key points from research for this section
-}
+class OutlineSection(BaseModel):
+    heading: str            # Section title
+    key_points: list[str]   # 3-5 bullet points per section
+
+class OutlineOutput(BaseModel):
+    title: str              # Document title
+    sections: list[OutlineSection]  # 3-7 sections
 ```
 
-## Implementation
+## Implementation Steps
 
-### Step 1: Replace Dummy Logic
+### Step 1: Read Research
+```python
+research_summary = input.context.research.summary if input.context.research else ''
+```
+
+### Step 2: Query LightRAG (Phase 2)
+```python
+rag_context = await self.retrieve_from_memory(
+    input.topic, mode='hybrid'
+)
+```
+
+### Step 3: Build Prompt
 ```python
 prompt = self.load_prompt('planning')
-full_prompt = f'{prompt}\n\nResearch: {input.context.research.summary}\nTopic: {input.topic}'
-result, tokens, latency = await self.model.generate_with_metrics(
-    prompt=full_prompt, config=input.config,
-)
-# Parse LLM response into OutlineOutput sections
-from acs_shared.utils import parse_outline
-output = OutlineOutput(
-    title=input.topic,
-    sections=parse_outline(result),
-)
+prompt += f"""
+Topic: {input.topic}
+Research Summary:
+{research_summary}
+
+Generate a structured outline with 4-6 sections.
+Use ## for section headings and - for bullet points.
+"""
 ```
 
-### Parsing the Outline
-The LLM returns something like:
-```markdown
-### 1. Introduction
-- Context and background
-- Why this matters
-
-### 2. Main Analysis
-- Key finding 1
-- Key finding 2
+### Step 4: Call LLM
+```python
+text, tokens, latency = await self.generate_text(prompt)
 ```
 
-Use `OutlineSection(heading=..., key_points=[...])` to structure it. The `parse_outline()` utility in `acs_shared.utils` handles `###`, `##`, `**bold**`, and numbered formats.
+### Step 5: Parse Output
+Parse the LLM output. The model typically returns:
+```
+## Section Title
+- Key point 1
+- Key point 2
+- Key point 3
+```
 
-### Testing
+Parse `##` headings as `OutlineSection.heading` and `-` items as `key_points`.
+
+### Step 6: Validate & Save
+- Minimum 3 sections, maximum 7
+- Each section must have at least 1 key point
+- Save: `input.context.set('outline', output)`
+
+## Architecture Doc Rules
+
+1. **Must query LightRAG** with hybrid mode before generating outline
+2. **Sections count: minimum 3, maximum 7** — no exceptions
+3. **Never hardcode model names** — read from `input.config`
+4. **Always use `self.generate_text()`** — never call LLM SDK directly
+
+## Testing
+
 ```bash
-uv run pytest tests/unit/test_planning.py -v
-cd packages/agents && uv run adk web
-```
+cd packages/agents
+uv run adk web
+# Select Planning Agent
 
-### Rules
-- **Always** base your outline on `context.research` — do not generate from the topic alone.
-- Minimum 5 sections, maximum 8.
-- Every section must have 3+ key points drawn from specific research facts.
-- Return all sections in order — the writing agent follows them exactly.
+uv run pytest tests/unit/test_planning.py -v
+```

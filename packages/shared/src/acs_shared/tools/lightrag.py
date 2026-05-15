@@ -1,5 +1,8 @@
 """LightRAG HTTP client tools wrapped as ADK-compatible functions.
-Phase 1: no-op implementations for skeleton testing.
+
+.. note::
+    Currently no-op stubs.  Wire up real ``httpx`` calls to the LightRAG
+    REST API (port 9621) when the service is deployed.
 """
 
 

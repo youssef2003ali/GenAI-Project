@@ -1,138 +1,127 @@
-# Member 1: Research Agent Guide
+# Member 1 — Research Agent Implementation Guide
 
-## Your Role
-You own the **Research Agent** — the first stage in the pipeline. Your agent receives a topic and must produce a structured research output with summary, facts, sources, and raw content. Everything downstream depends on your output quality.
+## Overview
 
-## Your Files
+The Research Agent is responsible for:
+1. Searching the web for information about the user's topic
+2. Extracting full content from search results
+3. Saving findings to LightRAG (knowledge memory)
+4. Summarizing everything for downstream agents
+
+## Files You Own
 
 | File | Purpose |
-|---|---|
-| `packages/agents/research/agent.py` | **Your main file.** Replace the Phase 1 dummy logic with real LLM calls. |
-| `packages/agents/research/server.py` | A2A server for ADK Web. **Do not modify** unless adding endpoints. |
-| `packages/agents/research/tools/` | Your tools directory. Add web search, scraping, or RAG tools here. |
-| `packages/agents/research/Dockerfile` | Container config. Modify if you add system dependencies. |
-| `packages/agents/research/pyproject.toml` | Your dependencies. Add packages with `uv add --active`. |
-| `prompts/research.md` | Your agent's system prompt template. |
+|------|---------|
+| `packages/agents/research/agent.py` | Your agent implementation |
+| `packages/agents/research/server.py` | A2A server (keep as-is) |
+| `packages/agents/research/tools/search.py` | Web search tool |
+| `packages/agents/research/tools/scrape.py` | Content extraction tool |
+| `packages/agents/research/pyproject.toml` | Dependencies |
+| `prompts/research.md` | Your prompt template |
 
-## Agent Contract
+## How It Works
 
-Every agent receives the same input and returns the same output structure:
-
-### Input (`AgentInput`)
-```python
-{
-    'job_id': str,      # Unique job ID for tracing
-    'topic': str,       # The topic to research
-    'context': PipelineContext,  # All previous agents' outputs (None for you)
-    'config': AgentConfig,       # Model provider, name, temperature, max_tokens
-}
+```
+AgentInput(topic, context) → ResearchAgent.execute()
+  → 1. Load prompt from prompts/research.md
+  → 2. Open-WebSearch MCP: search the web for the topic
+  → 3. Scrapling MCP: extract content from top 3-5 results
+  → 4. Save findings to LightRAG via save_to_memory()
+  → 5. Call LLM via self.generate_text(prompt)
+  → 6. Parse LLM output → ResearchOutput
+  → 7. input.context.set('research', output)
+  → AgentOutput(result, metadata, status)
 ```
 
-### Output (`AgentOutput`)
+## Required Schemas
+
 ```python
-{
-    'job_id': str,
-    'agent': AgentName.RESEARCH,
-    'result': str,       # JSON string of your ResearchOutput
-    'metadata': {
-        'config': AgentConfig,
-        'tokens_used': int,
-        'latency_ms': int,
-        'retry_count': int,
-        'error': str | None,
-    },
-    'status': AgentStatus,  # SUCCESS | RETRY | FAILED
-}
+class ResearchOutput(BaseModel):
+    summary: str          # Concise summary of findings
+    facts: list[str]       # 5+ key facts extracted
+    sources: list[str]     # Source URLs / citations
+    raw: str               # Full extracted content
 ```
 
-### Your Stage Output (`ResearchOutput`)
+## Implementation Steps
+
+### Step 1: Web Search (MCP Tool)
+The Open-WebSearch MCP is already wired in `agent.py` via `MCPToolset`. Use it to search:
+
 ```python
-{
-    'summary': str,       # Comprehensive research summary
-    'facts': list[str],   # Extracted factual statements (use extract_facts())
-    'sources': list[str], # Academic/professional sources (use parse_sources())
-    'raw': str,           # Full raw research content
-}
+# The MCP tools are registered automatically — call them like this:
+# (You need to add a tool call method to execute the MCP search)
+
+# The tool is configured as:
+MCPToolset(connection_params=StdioServerParameters(
+    command='npx', args=['open-websearch@latest']
+))
 ```
 
-## How to Implement Your Agent
+Search with the user's topic and get structured results (title, URL, description).
 
-### Step 1: Replace Phase 1 Dummy Logic
-Open `packages/agents/research/agent.py`. The current dummy:
+### Step 2: Content Extraction (MCP Tool)
+Scrapling is already wired via MCP. Extract content from the top 3-5 search results:
+
 ```python
-output = ResearchOutput(
-    summary=f'Research findings about: {input.topic}',
-    facts=['Fact 1: ...', 'Fact 2: ...'],
-    sources=['https://example.com/source1'],
-    raw='Raw extracted content...',
+MCPToolset(connection_params=StdioServerParameters(
+    command='python', args=['-m', 'scrapling.mcp']
+))
+```
+
+### Step 3: Save to LightRAG
+```python
+await self.save_to_memory(
+    text=extracted_content,
+    metadata={'topic': input.topic, 'source': url}
 )
 ```
 
-Replace with real LLM calls using `self.model.generate()`:
+### Step 4: Build Prompt
 ```python
 prompt = self.load_prompt('research')
-full_prompt = f'{prompt}\n\nTopic: {input.topic}'
-result, tokens, latency = await self.model.generate_with_metrics(
-    prompt=full_prompt,
-    config=input.config,
-)
-# Parse the LLM response into ResearchOutput
-from acs_shared.utils import extract_facts, parse_sources
-output = ResearchOutput(
-    summary=result,
-    facts=extract_facts(result),
-    sources=parse_sources(result),
-    raw=result,
+prompt += f"\n\nTopic: {input.topic}"
+prompt += f"\n\nSearch Results:\n{formatted_results}"
+```
+
+### Step 5: Call LLM
+```python
+text, tokens, latency = await self.generate_text(prompt)
+```
+
+### Step 6: Parse Output
+Parse the LLM response into a `ResearchOutput` with summary, facts, sources, and raw content.
+
+### Step 7: Save to Context & Return
+```python
+output = ResearchOutput(summary=..., facts=[...], sources=[...], raw=...)
+input.context.set('research', output)
+
+return AgentOutput(
+    job_id=input.job_id,
+    agent=AgentName.RESEARCH,
+    result=output.summary,
+    metadata=AgentMetadata(config=input.config, tokens_used=tokens, latency_ms=latency),
+    status=AgentStatus.SUCCESS,
 )
 ```
 
-### Step 2: Add Tools
-In `packages/agents/research/tools/`, add tools for:
-- **Web search**: Use the Open-WebSearch MCP (configured in your environment)
-- **Web scraping**: Use Scrapling (listed in the tech stack)
-- **LightRAG**: Use `self.save_to_memory()` and `self.retrieve_from_memory()` for knowledge persistence
+## Architecture Doc Rules to Follow
 
-### Step 3: Test Your Agent
+1. **Must run Open-WebSearch MCP** before generating any output — no skipping
+2. **Must run Scrapling** on top 3-5 search results to extract full content
+3. **Must save all extracted findings** to LightRAG before returning
+4. **Never call OpenRouter/Ollama/Mistral SDK directly** — always `self.generate_text()`
+5. **Never hardcode model names** — read from `input.config`
+
+## Testing
+
 ```bash
-# Unit test
-uv run pytest tests/unit/test_research.py -v
-
-# Run in isolation via ADK Web
+# Test your agent in isolation
 cd packages/agents
 uv run adk web
-# Select your agent from the dropdown, send test inputs
+# Select Research Agent from dropdown
 
-# Test the full pipeline
-uv run pytest tests/integration/test_pipeline.py -v
+# Run unit tests
+uv run pytest tests/unit/test_research.py -v
 ```
-
-### Step 4: Commit Your Work
-```bash
-git checkout -b feature/research-agent
-git add packages/agents/research/
-git commit -m 'feat(research): implement real LLM research agent with web search'
-git push origin feature/research-agent
-# Open PR to develop
-```
-
-## Available Utilities (in `acs_shared`)
-
-- `extract_facts(text)` — Extracts factual sentences, filters out headings
-- `parse_sources(text)` — Extracts academic citations from text
-- `parse_edit_scores(text)` — If you get edit feedback to incorporate
-- `BaseAgent.load_prompt(name)` — Loads prompt from `prompts/{name}.md`
-- `BaseAgent.save_to_memory(text)` — Save to LightRAG (Phase 1: no-op)
-- `BaseAgent.retrieve_from_memory(query)` — Retrieve from LightRAG (Phase 1: empty)
-
-## Rules
-- **Never** call OpenRouter, Ollama, or any LLM SDK directly. Always use `self.model.generate()`.
-- **Never** hardcode model names. Read from `input.config.model`.
-- **Never** crash. Catch errors and return `status: AgentStatus.FAILED` with a descriptive error message.
-- **Never** modify `packages/shared/` schemas without approval from Member 6.
-- **Always** set `input.context.set('research', output)` at the end of your execute method.
-
-## Git Workflow
-- Branch from `develop`: `git checkout -b feature/research-agent`
-- Commit convention: `feat(research): description`
-- Push and open PR to `develop` — never merge directly
-- Pre-commit hooks will lint + format your code automatically
