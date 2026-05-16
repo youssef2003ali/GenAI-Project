@@ -1,47 +1,64 @@
 # Agentic Content Generation System
 
-A multi-agent pipeline built on Google ADK where specialized AI agents collaborate to autonomously generate high-quality content. A user submits a topic. Six agents handle the rest: research, planning, writing, editing, optimization, and orchestration.
+A multi-agent pipeline built on **Google ADK** where specialized AI agents collaborate to autonomously generate high-quality content. A user submits a topic. Six agents handle the rest: research, planning, writing, editing, optimization, and orchestration.
+
+All LLM calls route through **LiteLLM**, providing a unified interface to Mistral AI, OpenRouter, Gemini, and 100+ providers. Currently configured with **Mistral AI** as the primary provider.
 
 ## Architecture
 
 ```
-Topic -> Research -> Planning -> Writing -> Editing -> Optimization -> Final Content
-                        ^                                  |
-                        +------- (max 3 retries) ----------+
+                                   ┌─────────────────────────┐
+                                   │   ADK SequentialAgent   │
+Topic ──► Research ──► Planning ──┤                         ├──► Optimization ──► Final
+                                   │   ┌─────────────────┐  │
+                                   │   │  LoopAgent x3   │  │
+                                   │   │ Writing ◄──► Edit│  │
+                                   │   └─────────────────┘  │
+                                   └─────────────────────────┘
 ```
+
+- **SequentialAgent** runs agents in strict order
+- **LoopAgent** handles the Editing → Writing retry cycle (max 3 iterations)
+- Editing returns `RETRY` → pipeline re-runs Writing → Editing
+- Editing returns `SUCCESS` → pipeline continues to Optimization
 
 ## Team Structure
 
 | Member | Agent | Responsibility | Guide |
 |--------|-------|---------------|-------|
-| Member 1 | Research Agent | Web search + content extraction via Open-WebSearch MCP and Scrapling | [guides/member-1-research.md](guides/member-1-research.md) |
-| Member 2 | Planning Agent | Structured outline from research | [guides/member-2-planning.md](guides/member-2-planning.md) |
-| Member 3 | Writing Agent | Full content generation from outline | [guides/member-3-writing.md](guides/member-3-writing.md) |
-| Member 4 | Editing Agent | Quality scoring + retry decisions | [guides/member-4-editing.md](guides/member-4-editing.md) |
-| Member 5 | Optimization Agent | Tone/style/length polishing | [guides/member-5-optimization.md](guides/member-5-optimization.md) |
-| Member 6 | Orchestrator | System skeleton + pipeline coordination + infrastructure | Phase 1 complete ✅ |
+| Member 1 | Research Agent | Web search + content extraction via Open-WebSearch MCP and Scrapling | [guide](guides/member-1-research.md) |
+| Member 2 | Planning Agent | Structured outline from research (3-7 sections) | [guide](guides/member-2-planning.md) |
+| Member 3 | Writing Agent | Full content generation from outline (500-2000 words) | [guide](guides/member-3-writing.md) |
+| Member 4 | Editing Agent | Quality scoring (coherence, relevance, completeness) + retry decisions | [guide](guides/member-4-editing.md) |
+| Member 5 | Optimization Agent | Tone/style/length polishing | [guide](guides/member-5-optimization.md) |
+| Member 6 | Orchestrator | ADK pipeline coordination + infrastructure | ✅ Complete |
+
+> **Current status:** Agents are stubbed with implementation guides. Each member implements their agent's `execute()` method in `packages/agents/<name>/agent.py`.
 
 ## Tech Stack
 
 - **Agent Framework**: Google ADK (Agent Development Kit)
-- **Agent Communication**: A2A Protocol (Google/Linux Foundation)
-- **LLM Provider**: OpenRouter (cloud), Ollama (local fine-tuned)
-- **Knowledge Memory**: LightRAG (knowledge graph RAG)
+- **LLM Abstraction**: LiteLLM (supports Mistral, OpenRouter, Gemini, Ollama, 100+ providers)
+- **Current Provider**: Mistral AI (`mistral-large-latest`)
+- **Pipeline**: ADK SequentialAgent + LoopAgent
+- **Agent Communication**: A2A Protocol (each agent runs as an A2A server)
+- **Knowledge Memory**: LightRAG (knowledge graph RAG) — Phase 2
 - **Backend**: FastAPI + Redis + PostgreSQL
-- **Frontend**: Next.js
+- **Frontend**: Next.js 14 + React 18
 - **MLOps**: MLflow
-- **Deployment**: Docker Compose (Phase 1: Alibaba VPS, Phase 2: DatabaseMart VPS)
+- **Deployment**: Docker Compose (11 containers)
 - **CI/CD**: GitHub Actions
+- **Code Quality**: Ruff (lint + format), pre-commit hooks
 
 ## First Time Setup
 
 ### Prerequisites
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) package manager
-- Docker Desktop (optional, for containerized deployment)
-- Git
+- Node.js 18+ (for frontend)
+- Docker Desktop (optional)
 
-### Quick Start (No Docker)
+### Quick Start
 
 ```bash
 # 1. Clone the repo
@@ -51,57 +68,35 @@ cd agentic-content-system
 # 2. Install all dependencies via uv workspace
 uv sync
 
-# 3. Copy environment template
+# 3. Copy and configure environment
 cp .env.example .env
-# Edit .env - add your GEMINI_API_KEY or OPENROUTER_API_KEY for real AI agent calls
-# Phase 1 local agents work without any API key
+# Edit .env — add your MISTRAL_API_KEY for real AI agent calls
+# The system works without an API key (uses dummy fallback for dev)
 
 # 4. Install pre-commit hooks
 uv run pre-commit install
 
-# 5. Start the backend + frontend
-uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8080
+# 5. Start backend
+uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
 
-# 6. Open the frontend
-# Visit http://localhost:8000 in your browser
-```
-
-## Running the Web Interface
-
-The frontend is a **Next.js React** app that talks to the FastAPI backend via REST + WebSocket.
-
-### Quick Start
-
-```bash
-# Terminal 1: Backend (reads HOST/PORT from .env)
-python run_backend.py
-
-# Terminal 2: Frontend (reads PORT/FRONTEND_PORT from ../.env automatically)
+# 6. In another terminal, start frontend
 cd frontend && npm run dev
+
+# 7. Open http://localhost:3000 in your browser
 ```
 
-Open **http://localhost:3000** in your browser.
-
-### Change Ports (edit `.env` only)
+### Environment Configuration
 
 ```env
-# .env at project root
-HOST=0.0.0.0        # Backend bind address
-PORT=8000           # Backend port
-FRONTEND_PORT=3000  # Frontend port
-```
+# Required for real AI content
+MISTRAL_API_KEY=your-mistral-api-key
 
-Change any value, restart both processes — done.
-
-### Manual Overrides
-
-```bash
-# Backend: CLI flags override .env
-python run_backend.py --port 8080 --host 127.0.0.1
-
-# Frontend: env vars override .env
-PORT=3001 npm run dev
-NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev  # custom backend
+# Optional: per-agent model overrides
+RESEARCH_MODEL=mistral-large-latest
+PLANNING_MODEL=mistral-large-latest
+WRITING_MODEL=mistral-large-latest
+EDITING_MODEL=mistral-large-latest
+OPTIMIZATION_MODEL=mistral-small-latest
 ```
 
 ### How to Use
@@ -113,22 +108,17 @@ NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev  # custom backend
 4. Each panel fills with output as agents complete
 5. Final result appears with edit scores
 
-> **Note:** Phase 1 uses dummy agents that return hardcoded data (no API key needed).
-> For real AI-generated content, set `GEMINI_API_KEY` in `.env` and restart.
-> The ADK + Gemini pipeline is pre-configured and tested.
+> **Note:** Without a `MISTRAL_API_KEY`, agents return dummy fallback text. This is useful for frontend development and pipeline testing without consuming API quota.
 
-### Architecture
+### API Endpoints
 
 ```
-Terminal 1: FastAPI (port 8000)          Terminal 2: Next.js (port 3000)
-┌──────────────────────────────┐        ┌──────────────────────────┐
-│  GET /health                 │◄───────│  http://localhost:3000   │
-│  POST /generate              │────────│  Submit topic → job_id   │
-│  GET /status/{job_id}        │────────│  Poll progress           │
-│  GET /result/{job_id}        │────────│  Get final output        │
-│  WS  /ws/{job_id}            │════════│  Real-time stage updates │
-│  BackgroundTasks → Pipeline  │         │                          │
-└──────────────────────────────┘        └──────────────────────────┘
+GET  /health              → Health check
+GET  /agents/status       → Agent availability
+POST /generate            → Submit topic, returns job_id
+GET  /status/{job_id}     → Poll pipeline progress
+GET  /result/{job_id}     → Get final output
+WS   /ws/{job_id}         → Real-time streaming updates
 ```
 
 ## Running with Docker
@@ -153,7 +143,7 @@ uv run pytest tests/unit/ -v
 # Specific agent test
 uv run pytest tests/unit/test_research.py -v
 
-# Integration test (full pipeline)
+# Full pipeline integration test
 uv run pytest tests/integration/ -v
 ```
 
@@ -167,48 +157,6 @@ uv run adk web
 # Send test inputs and inspect outputs interactively
 ```
 
-## Git Workflow
-
-### Branch Strategy
-
-- `main` — Production. Never push directly. PR only, 2 approvals required.
-- `develop` — Integration branch. PR only, 1 approval required.
-- `feature/your-agent` — Your personal branch. Push freely.
-
-### Daily Workflow
-
-```bash
-# Pull latest
-git checkout develop && git pull
-
-# Switch to your feature branch
-git checkout feature/your-agent
-
-# Make changes and test
-uv run pytest tests/unit/test_your_agent.py
-uv run ruff check packages/agents/your-agent/
-
-# Commit (pre-commit hooks run automatically)
-git commit -m 'feat(agent): description of change'
-
-# Push and open PR to develop
-git push origin feature/your-agent
-```
-
-### Commit Convention
-
-Format: `type(scope): description`
-- Types: feat, fix, refactor, test, docs, chore, ci
-- Scopes: research, planning, writing, editing, optimization, orchestrator, base, docker, ci, frontend
-
-### Hard Rules
-
-- Never push directly to main or develop
-- Never force push
-- Never modify another member's agent file
-- Never modify shared/schemas.py without Member 6 approval
-- Always open a Pull Request - never merge directly
-
 ## Project Structure
 
 ```
@@ -216,91 +164,107 @@ agentic-content-system/
 ├── pyproject.toml              # uv workspace root
 ├── .env.example                # Environment variable template
 ├── .pre-commit-config.yaml     # Pre-commit hooks
-├── docker-compose.yml          # Phase 2 full stack
-├── docker-compose.dev.yml      # Phase 1 minimal stack
+├── docker-compose.yml          # Full stack (11 containers)
+├── docker-compose.dev.yml      # Dev stack (backend + Redis)
 ├── Dockerfile.dev              # Dev container
-├── nginx.conf                  # Reverse proxy config
+├── nginx.conf                  # Reverse proxy
+├── run_backend.py              # Backend launcher script
 ├── packages/
-│   ├── shared/                 # acs-shared - schemas, models, base agent
+│   ├── shared/                 # acs-shared — schemas, models, base agent
 │   │   └── src/acs_shared/
-│   │       ├── constants.py    # Provider, Model, AgentName, AgentStatus enums
-│   │       ├── schemas.py      # All Pydantic schemas
-│   │       ├── model.py        # AgentModel interface
+│   │       ├── constants.py    # Provider/Model/AgentName/AgentStatus enums
+│   │       ├── schemas.py      # All Pydantic schemas (AgentInput, PipelineContext, etc.)
+│   │       ├── model.py        # AgentModel via LiteLLM (provider-agnostic)
 │   │       ├── settings.py     # pydantic-settings from .env
-│   │       ├── base_agent.py   # BaseAgent class
-│   │       └── tools/          # LightRAG and MLflow tools
+│   │       ├── base_agent.py   # BaseAgent class (prompt loading, MLflow, metrics)
+│   │       └── tools/          # LightRAG + MLflow tool stubs
 │   ├── agents/
-│   │   ├── research/           # Member 1
-│   │   ├── planning/           # Member 2
-│   │   ├── writing/            # Member 3
-│   │   ├── editing/            # Member 4
-│   │   ├── optimization/       # Member 5
-│   │   └── orchestrator/       # Member 6 - pipeline hub-spoke routing
+│   │   ├── research/           # Member 1 — stub + guide
+│   │   ├── planning/           # Member 2 — stub + guide
+│   │   ├── writing/            # Member 3 — stub + guide
+│   │   ├── editing/            # Member 4 — stub + guide
+│   │   ├── optimization/       # Member 5 — stub + guide
+│   │   └── orchestrator/       # Member 6 — ADK pipeline (complete)
+│   │       ├── pipeline.py     # PipelineRunner → delegates to ADK
+│   │       └── adk_runner.py   # ADK SequentialAgent + LoopAgent orchestration
 │   └── backend/                # FastAPI backend
 │       ├── main.py             # App entrypoint
 │       ├── routers/            # REST + WebSocket routes
-│       ├── services/           # Redis, LightRAG, MLflow clients
+│       ├── services/           # Redis queue, LightRAG, MLflow clients
 │       └── db/                 # Database models
 ├── prompts/                    # Agent prompt templates
-│   ├── research.md
-│   ├── planning.md
-│   ├── writing.md
-│   ├── editing.md
-│   └── optimization.md
 ├── tests/                      # Unit + integration tests
-│   ├── conftest.py             # Shared fixtures
-│   ├── unit/                   # Per-agent unit tests
-│   └── integration/            # End-to-end pipeline test
-├── frontend/                   # Next.js UI (placeholder)
-├── lightrag/                   # LightRAG service (placeholder)
-├── monitoring/                 # Prometheus + Grafana config
+├── frontend/                   # Next.js 14 React app
+├── guides/                     # Per-agent implementation guides
+├── monitoring/                 # Prometheus + Grafana
 └── .github/workflows/          # CI/CD pipelines
-    ├── pr.yml                  # Runs on every PR to develop
-    ├── develop.yml             # Runs on merge to develop
-    └── main.yml                # Runs on merge to main
 ```
-
-## Development Phases
-
-| Phase | Timeline | Focus |
-|-------|----------|-------|
-| Phase 1 | Weeks 1-2 | **Skeleton**: uv workspace, shared package, dummy agents, FastAPI, Docker, CI/CD |
-| Phase 2 | Weeks 3-5 | **Agent Development**: Real agent logic with OpenRouter cloud models |
-| Phase 3 | Weeks 5-6 | **Integration & Evaluation**: Retry loop testing, MLflow, Prometheus |
-| Phase 4 | Weeks 7-8 | **Full Deployment**: DatabaseMart VPS, all 11 containers, SSL, auto-deploy |
-| Phase 5 | Weeks 9-10 | **Fine-tuning**: Local models via Ollama, cloud/local swap |
-| Phase 6 | Week 10 | **Final Report & Presentation**: Documentation, demo, report |
 
 ## Agent Contract
 
 Every agent receives the same input and returns the same output structure:
 
 ### Input
-```python
-job_id    # unique job ID
-topic     # the topic to generate content about
-context   # PipelineContext with all previous agent outputs
-config    # which model to use
+```
+job_id    unique job ID
+topic     the topic to generate content about
+context   PipelineContext with all previous agent outputs
+config    which model/provider to use
 ```
 
 ### Output
-```python
-job_id    # same ID received
-agent     # agent name (e.g. 'writing')
-result    # output as JSON string
-metadata  # dict: model, tokens_used, latency_ms, retry_count
-status    # 'success', 'retry', or 'failed'
+```
+job_id    same ID received
+agent     agent name (e.g. 'writing')
+result    text output
+metadata  model, tokens_used, latency_ms, retry_count
+status    'success', 'retry', or 'failed'
 ```
 
 ### Rules
-- Always return AgentOutput with all fields filled
-- Always use self.model.generate() to call the LLM
-- Always read previous outputs from input.context
-- Never call OpenRouter or any LLM SDK directly
-- Never hardcode model names - read from input.config
-- Never crash - catch all errors and return status: failed
+- Always return `AgentOutput` with all fields filled
+- Always use `self.generate_text()` — never call LLM SDKs directly
+- Never hardcode model names — read from `input.config`
+- Never crash — catch all errors and return `status: failed`
+- Context is append-only (`context.set()` raises on duplicate)
 
-## Questions?
+## Developing Your Agent
 
-Ask Member 6 (Orchestrator) first. Try ADK Web debugging before asking.
-The detailed architecture document has the full picture.
+Each member has a stub agent file and a detailed guide:
+
+| Member | Stub File | Guide |
+|--------|-----------|-------|
+| 1 — Research | `packages/agents/research/agent.py` | [guides/member-1-research.md](guides/member-1-research.md) |
+| 2 — Planning | `packages/agents/planning/agent.py` | [guides/member-2-planning.md](guides/member-2-planning.md) |
+| 3 — Writing | `packages/agents/writing/agent.py` | [guides/member-3-writing.md](guides/member-3-writing.md) |
+| 4 — Editing | `packages/agents/editing/agent.py` | [guides/member-4-editing.md](guides/member-4-editing.md) |
+| 5 — Optimization | `packages/agents/optimization/agent.py` | [guides/member-5-optimization.md](guides/member-5-optimization.md) |
+
+Each stub contains:
+- Class definition extending `BaseAgent`
+- `execute()` method skeleton with `# --- YOUR CODE HERE ---` marker
+- Detailed docstring with step-by-step implementation instructions
+- Correct schema imports and method signatures
+
+## Git Workflow
+
+### Branch Strategy
+
+- `main` — Production. PR only, 2 approvals required.
+- `develop` — Integration branch. PR only, 1 approval required.
+- `feature/your-agent` — Your personal branch. Push freely.
+
+### Commit Convention
+
+Format: `type(scope): description`
+- Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
+- Scopes: `research`, `planning`, `writing`, `editing`, `optimization`, `orchestrator`, `base`, `docker`, `ci`, `frontend`
+
+### Hard Rules
+
+- Never push directly to main or develop
+- Never force push
+- Never modify another member's agent file
+- Never modify `shared/schemas.py` without Member 6 approval
+- Always open a Pull Request — never merge directly
+- Never import an LLM SDK directly — always use `self.generate_text()`
