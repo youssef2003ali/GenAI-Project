@@ -33,7 +33,7 @@ Topic ──► Research ──► Planning ──┤                         �
 | Member 5 | Optimization Agent | Tone/style/length polishing | [guide](guides/member-5-optimization.md) |
 | Member 6 | Orchestrator | ADK pipeline coordination + infrastructure | ✅ Complete |
 
-> **Current status:** Agents are stubbed with implementation guides. Each member implements their agent's `execute()` method in `packages/agents/<name>/agent.py`.
+> **Current status:** Orchestrator, pipeline infrastructure, and shared agent contracts are complete. Individual agents are in active implementation by team members. Each member implements their agent's `execute()` method in `packages/agents/<name>/agent.py`.
 
 ## Tech Stack
 
@@ -62,7 +62,7 @@ Topic ──► Research ──► Planning ──┤                         �
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-org/agentic-content-system
+git clone https://github.com/youssef2003ali/GenAI-Project
 cd agentic-content-system
 
 # 2. Install all dependencies via uv workspace
