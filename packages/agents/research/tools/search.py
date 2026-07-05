@@ -11,8 +11,10 @@ dependency is unavailable.
 """
 
 import asyncio
+import html
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +47,22 @@ def _dummy_results(query: str, num_results: int) -> list[dict]:
     ]
 
 
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+
+def _clean_text(text: str) -> str:
+    """Strip HTML tags and unescape entities from search snippets."""
+    if not text:
+        return ''
+    return html.unescape(_HTML_TAG_RE.sub('', text)).strip()
+
+
 def _normalize(item: dict) -> dict:
     """Map the MCP server's result shape onto our stable contract."""
     return {
-        'title': item.get('title') or item.get('name') or '',
+        'title': _clean_text(item.get('title') or item.get('name') or ''),
         'url': item.get('url') or item.get('link') or '',
-        'description': (
+        'description': _clean_text(
             item.get('description') or item.get('snippet') or item.get('content') or ''
         ),
     }
@@ -94,10 +106,16 @@ async def web_search(query: str, num_results: int = 5) -> list[dict]:
                     await session.initialize()
                     result = await session.call_tool(
                         _SEARCH_TOOL_NAME,
-                        arguments={'query': query, 'limit': num_results},
+                        arguments={'query': query, 'limit': num_results, 'engines': ['duckduckgo']},
                     )
         results = _parse_tool_result(result)
-        return results[:num_results] if results else _dummy_results(query, num_results)
+        if results:
+            return results[:num_results]
+        logger.warning(
+            f"Open-WebSearch MCP returned no usable results for '{query}' "
+            '— falling back to dummy results'
+        )
+        return _dummy_results(query, num_results)
 
     except Exception as exc:
         logger.warning(f'Open-WebSearch MCP failed ({exc}) — falling back to dummy results')

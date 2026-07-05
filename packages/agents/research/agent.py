@@ -9,6 +9,7 @@ Pipeline position: 1st agent in the SequentialAgent.
 """
 
 import logging
+import re
 
 from acs_shared.base_agent import BaseAgent
 from acs_shared.constants import AgentName, AgentStatus
@@ -23,6 +24,9 @@ logger = logging.getLogger(__name__)
 # How many search results to scrape content from.
 _TOP_N_RESULTS = 5
 _MIN_VALID_WORD_COUNT = 3
+_CITATION_LINK_RE = re.compile(r'\[+[^\]]*\]+\(#[^)]*\)')
+_MD_LINK_RE = re.compile(r'\[([^\]]+)\]\([^)]+\)')
+_TABLE_ROW_RE = re.compile(r'^\s*\|.*\|\s*$', re.MULTILINE)
 
 
 class ResearchAgent(BaseAgent):
@@ -95,9 +99,10 @@ class ResearchAgent(BaseAgent):
 
         # ── Step 6: Derive facts & sources deterministically ──────────────
         raw_content = '\n\n'.join(item['content'] for item in scraped) or summary
-        facts = extract_facts(raw_content)
+        cleaned_for_facts = self._clean_for_facts(raw_content)
+        facts = extract_facts(cleaned_for_facts)
         if not facts:
-            facts = extract_facts(summary)
+            facts = extract_facts(self._clean_for_facts(summary))
 
         sources = [item['url'] for item in scraped if item.get('url')]
         if not sources:
@@ -148,6 +153,17 @@ class ResearchAgent(BaseAgent):
                 }
             )
         return scraped
+
+    @staticmethod
+    def _clean_for_facts(text: str) -> str:
+        """Strip markdown link syntax, citation markers, and table rows
+        before fact extraction, so extract_facts() doesn't pick up raw
+        [text](url) links, Wikipedia-style [[3]](#anchor) citations, or
+        markdown table syntax as 'facts'."""
+        text = _CITATION_LINK_RE.sub('', text)
+        text = _MD_LINK_RE.sub(r'\1', text)
+        text = _TABLE_ROW_RE.sub('', text)
+        return text
 
     def _build_prompt(self, topic: str, scraped: list[dict]) -> str:
         prompt = self.load_prompt('research')

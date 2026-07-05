@@ -18,6 +18,7 @@ scraping dependency is unavailable.
 import asyncio
 import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,32 @@ _COMMON_ARGS = {
     'extraction_type': 'markdown',
     'main_content_only': True,
 }
+
+_ANCHOR_LINK_RE = re.compile(r'\]\(#')
+_NAV_BULLET_RE = re.compile(r'^\s*[\*\+\-]\s*\[')
+
+
+def _extract_prose(markdown: str, min_words: int = 25, max_anchor_links: int = 2) -> str:
+    """Skip past leading navigation/TOC boilerplate and return content
+    starting from the first substantial prose paragraph.
+
+    TOC/nav blocks (e.g. Wikipedia) are identified by a high density of
+    internal anchor links (``](#Section)``) rather than just checking
+    the first line, since nested bullet lists often span many lines as
+    a single markdown "paragraph" with no blank-line separators.
+    """
+    paragraphs = re.split(r'\n\s*\n', markdown)
+    for i, para in enumerate(paragraphs):
+        stripped = para.strip()
+        if not stripped:
+            continue
+        if len(_ANCHOR_LINK_RE.findall(para)) > max_anchor_links:
+            continue  # TOC/nav block full of #anchor links
+        if _NAV_BULLET_RE.match(stripped):
+            continue
+        if len(stripped.split()) >= min_words:
+            return '\n\n'.join(paragraphs[i:])
+    return markdown  # fallback: nothing matched, return as-is
 
 
 def _dummy_content(url: str) -> str:
@@ -108,6 +135,7 @@ async def scrape_content(url: str) -> str:
                         content = await _call_tool(session, 'fetch', url)
 
         if content:
+            content = _extract_prose(content)
             return content[:_MAX_CONTENT_CHARS]
         logger.warning(f'Scrapling returned no content for {url} — using dummy content')
         return _dummy_content(url)
