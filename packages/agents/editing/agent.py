@@ -1,19 +1,3 @@
-"""
-Editing Agent.
-
-Reviews the generated draft, scores it on:
-- Coherence
-- Relevance
-- Completeness
-
-Returns:
-- SUCCESS if average >= 7
-- RETRY if average < 7
-
-Retry looping is handled by the ADK LoopAgent
-(max_iterations=3), not inside this agent.
-"""
-
 import logging
 
 from acs_shared.base_agent import BaseAgent
