@@ -113,19 +113,20 @@ def parse_edit_scores(text: str) -> dict:
         'issues': None,
     }
 
-    m = re.search(r'Coherence:\s*(\d+)', text)
+    # Flexible regex: matches both "Coherence: 9" and "**Coherence (9/10):**"
+    m = re.search(r'Coherence[^\d]*(\d+)', text)
     if m:
         result['coherence'] = min(10, max(0, int(m.group(1))))
 
-    m = re.search(r'Relevance:\s*(\d+)', text)
+    m = re.search(r'Relevance[^\d]*(\d+)', text)
     if m:
         result['relevance'] = min(10, max(0, int(m.group(1))))
 
-    m = re.search(r'Completeness:\s*(\d+)', text)
+    m = re.search(r'Completeness[^\d]*(\d+)', text)
     if m:
         result['completeness'] = min(10, max(0, int(m.group(1))))
 
-    m = re.search(r'Average:\s*([\d.]+)', text)
+    m = re.search(r'Average[^\d]*([\d.]+)', text)
     if m:
         result['average'] = float(m.group(1))
     else:
@@ -133,7 +134,7 @@ def parse_edit_scores(text: str) -> dict:
             result['coherence'] + result['relevance'] + result['completeness']
         ) / 3
 
-    m = re.search(r'Decision:\s*(\w+)', text)
+    m = re.search(r'Decision[^\d\w]*(\w+)', text)
     if m:
         result['passed'] = m.group(1).strip().upper() == 'PASS'
 

@@ -21,8 +21,8 @@ if (fs.existsSync(rootEnv)) {
 
 // ── Derive API URL from .env ───────────────────────────────────────
 const BACKEND_HOST = process.env.HOST || '0.0.0.0';
-const BACKEND_PORT = process.env.BACKEND_PORT || process.env.PORT || '8000';
-const FRONTEND_PORT = process.env.FRONTEND_PORT || '3000';
+const BACKEND_PORT = process.env.BACKEND_PORT || process.env.PORT || '8047';
+const FRONTEND_PORT = process.env.FRONTEND_PORT || '3047';
 
 // NEXT_PUBLIC_* vars are inlined at build time by Next.js.
 // For dev, we set them here so next.config.js can use them for rewrites.
@@ -33,10 +33,7 @@ if (!process.env.NEXT_PUBLIC_API_URL) {
   process.env.NEXT_PUBLIC_API_URL = API_URL;
 }
 
-// ── Dev server port ────────────────────────────────────────────────
-if (!process.env.PORT) {
-  process.env.PORT = FRONTEND_PORT;
-}
+// Dev server port is set via `-p` flag in package.json's dev script
 
 console.log(`\n  ACS Frontend`);
 console.log(`  Backend API: ${API_URL}`);

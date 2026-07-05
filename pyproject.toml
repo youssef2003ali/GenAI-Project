@@ -11,6 +11,8 @@ dependencies = [
     "google-adk>=1.33.0",
     "pre-commit>=4.6.0",
     "mcp>=1.28.1",
+    "python-docx>=1.2.0",
+    "scrapling[ai]>=0.4.10",
 ]
 
 [tool.uv.workspace]

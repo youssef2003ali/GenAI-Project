@@ -224,10 +224,8 @@ class ADKPipelineRunner:
             app_name='acs',
             user_id='default',
             session_id=job_id,
+            state={'job_id': job_id, 'topic': topic, 'pipeline_context': {}},
         )
-        session.state['job_id'] = job_id
-        session.state['topic'] = topic
-        session.state['pipeline_context'] = {}
 
         runner = Runner(
             agent=pipeline,

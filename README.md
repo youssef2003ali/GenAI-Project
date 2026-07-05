@@ -35,169 +35,91 @@ Topic ──► Research ──► Planning ──┤                         �
 
 > **Current status:** Orchestrator, pipeline infrastructure, and shared agent contracts are complete. Individual agents are in active implementation by team members. Each member implements their agent's `execute()` method in `packages/agents/<name>/agent.py`.
 
-## Tech Stack
-
-- **Agent Framework**: Google ADK (Agent Development Kit)
-- **LLM Abstraction**: LiteLLM (supports Mistral, OpenRouter, Gemini, Ollama, 100+ providers)
-- **Current Provider**: Mistral AI (`mistral-large-latest`)
-- **Pipeline**: ADK SequentialAgent + LoopAgent
-- **Agent Communication**: A2A Protocol (each agent runs as an A2A server)
-- **Knowledge Memory**: LightRAG (knowledge graph RAG) — Phase 2
-- **Backend**: FastAPI + Redis + PostgreSQL
-- **Frontend**: Next.js 14 + React 18
-- **MLOps**: MLflow
-- **Deployment**: Docker Compose (11 containers)
-- **CI/CD**: GitHub Actions
-- **Code Quality**: Ruff (lint + format), pre-commit hooks
-
-## First Time Setup
+## Quick Start
 
 ### Prerequisites
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-- Node.js 18+ (for frontend)
-- Docker Desktop (optional)
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 18+
 
-### Quick Start
+### 1. Install dependencies
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/youssef2003ali/GenAI-Project
-cd agentic-content-system
-
-# 2. Install all dependencies via uv workspace
+```powershell
 uv sync
-
-# 3. Copy and configure environment
-cp .env.example .env
-# Edit .env — add your MISTRAL_API_KEY for real AI agent calls
-# The system works without an API key (uses dummy fallback for dev)
-
-# 4. Install pre-commit hooks
-uv run pre-commit install
-
-# 5. Start backend
-uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8000
-
-# 6. In another terminal, start frontend
-cd frontend && npm run dev
-
-# 7. Open http://localhost:3000 in your browser
+cd frontend
+npm install
+cd ..
 ```
 
-### Environment Configuration
+### 2. Configure API key
+
+Copy `.env.example` to `.env` and add your Mistral API key:
+
+```powershell
+copy .env.example .env
+# Edit .env — set MISTRAL_API_KEY=your-key
+```
+
+### 3. Fix Windows `npx` resolution (one-time)
+
+`packages/agents/research/tools/search.py` line 33 — change `npx` to `npx.cmd`:
+
+```powershell
+uv run python -c "path = r'packages\agents\research\tools\search.py'; content = open(path).read(); open(path, 'w').write(content.replace(\"command='npx'\", \"command='npx.cmd'\"))"
+```
+
+### 4. Start backend (Terminal 1)
+
+```powershell
+uv run uvicorn packages.backend.main:app --host 0.0.0.0 --port 8047
+```
+
+### 5. Start frontend (Terminal 2)
+
+```powershell
+cd frontend
+npm run dev
+```
+
+### 6. Use it
+
+Open `http://localhost:3047` — enter a topic, click generate.
+
+### Environment
 
 ```env
-# Required for real AI content
-MISTRAL_API_KEY=your-mistral-api-key
-
-# Optional: per-agent model overrides
-RESEARCH_MODEL=mistral-large-latest
-PLANNING_MODEL=mistral-large-latest
+MISTRAL_API_KEY=your-key              # Required
+RESEARCH_MODEL=mistral-large-latest    # Optional overrides
 WRITING_MODEL=mistral-large-latest
-EDITING_MODEL=mistral-large-latest
-OPTIMIZATION_MODEL=mistral-small-latest
 ```
 
-### How to Use
+### Verify with curl
 
-1. Enter a topic (e.g., "Quantum Computing", "Climate Change")
-2. Click **Generate Content**
-3. Watch the 5 pipeline stages light up in real-time:
-   - 🔍 Research → 📋 Planning → ✍️ Writing → 📝 Editing → ✨ Optimization
-4. Each panel fills with output as agents complete
-5. Final result appears with edit scores
-
-> **Note:** Without a `MISTRAL_API_KEY`, agents return dummy fallback text. This is useful for frontend development and pipeline testing without consuming API quota.
-
-### API Endpoints
-
-```
-GET  /health              → Health check
-GET  /agents/status       → Agent availability
-POST /generate            → Submit topic, returns job_id
-GET  /status/{job_id}     → Poll pipeline progress
-GET  /result/{job_id}     → Get final output
-WS   /ws/{job_id}         → Real-time streaming updates
-```
-
-## Running with Docker
-
-```bash
-# Phase 1 dev stack (backend + Redis)
-docker compose -f docker-compose.dev.yml up -d
-
-# Verify
-curl http://localhost:8000/health
+```powershell
+Invoke-WebRequest -Uri "http://localhost:8047/health"
+Invoke-WebRequest -Uri "http://localhost:8047/generate" -Method POST -ContentType "application/json" -Body '{"topic":"Quantum Computing"}'
 ```
 
 ## Run Tests
 
-```bash
-# All tests
+```powershell
 uv run pytest tests/ -v
-
-# Unit tests only
-uv run pytest tests/unit/ -v
-
-# Specific agent test
-uv run pytest tests/unit/test_research.py -v
-
-# Full pipeline integration test
-uv run pytest tests/integration/ -v
-```
-
-### Develop Your Agent with ADK Web
-
-```bash
-cd packages/agents
-uv run adk web
-# Opens browser at http://localhost:8000
-# Select your agent from the dropdown
-# Send test inputs and inspect outputs interactively
 ```
 
 ## Project Structure
 
 ```
-agentic-content-system/
-├── pyproject.toml              # uv workspace root
-├── .env.example                # Environment variable template
-├── .pre-commit-config.yaml     # Pre-commit hooks
-├── docker-compose.yml          # Full stack (11 containers)
-├── docker-compose.dev.yml      # Dev stack (backend + Redis)
-├── Dockerfile.dev              # Dev container
-├── nginx.conf                  # Reverse proxy
-├── run_backend.py              # Backend launcher script
-├── packages/
-│   ├── shared/                 # acs-shared — schemas, models, base agent
-│   │   └── src/acs_shared/
-│   │       ├── constants.py    # Provider/Model/AgentName/AgentStatus enums
-│   │       ├── schemas.py      # All Pydantic schemas (AgentInput, PipelineContext, etc.)
-│   │       ├── model.py        # AgentModel via LiteLLM (provider-agnostic)
-│   │       ├── settings.py     # pydantic-settings from .env
-│   │       ├── base_agent.py   # BaseAgent class (prompt loading, MLflow, metrics)
-│   │       └── tools/          # LightRAG + MLflow tool stubs
-│   ├── agents/
-│   │   ├── research/           # Member 1 — stub + guide
-│   │   ├── planning/           # Member 2 — stub + guide
-│   │   ├── writing/            # Member 3 — stub + guide
-│   │   ├── editing/            # Member 4 — stub + guide
-│   │   ├── optimization/       # Member 5 — stub + guide
-│   │   └── orchestrator/       # Member 6 — ADK pipeline (complete)
-│   │       ├── pipeline.py     # PipelineRunner → delegates to ADK
-│   │       └── adk_runner.py   # ADK SequentialAgent + LoopAgent orchestration
-│   └── backend/                # FastAPI backend
-│       ├── main.py             # App entrypoint
-│       ├── routers/            # REST + WebSocket routes
-│       ├── services/           # Redis queue, LightRAG, MLflow clients
-│       └── db/                 # Database models
-├── prompts/                    # Agent prompt templates
-├── tests/                      # Unit + integration tests
-├── frontend/                   # Next.js 14 React app
-├── guides/                     # Per-agent implementation guides
-├── monitoring/                 # Prometheus + Grafana
-└── .github/workflows/          # CI/CD pipelines
+packages/
+├── shared/src/acs_shared/     # Schemas, base agent, LiteLLM model
+├── agents/
+│   ├── research/              # Web search + scrape (MCP)
+│   ├── planning/              # Outline from research
+│   ├── writing/               # Full article from outline
+│   ├── editing/               # Score + retry decision
+│   ├── optimization/          # Final polish
+│   └── orchestrator/          # ADK pipeline runner
+├── backend/                   # FastAPI + WebSocket
+└── frontend/                  # Next.js UI
 ```
 
 ## Agent Contract

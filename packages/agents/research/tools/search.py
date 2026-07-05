@@ -30,7 +30,7 @@ _SEARCH_TOOL_NAME = 'search'
 _MCP_TIMEOUT_SEC = 30
 
 _STDIO_PARAMS = (
-    StdioServerParameters(command='npx', args=['-y', 'open-websearch@latest']) if _HAS_MCP else None
+    StdioServerParameters(command='npx.cmd', args=['-y', 'open-websearch@latest']) if _HAS_MCP else None
 )
 
 

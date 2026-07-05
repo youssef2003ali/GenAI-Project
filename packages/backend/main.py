@@ -41,3 +41,5 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(jobs.router)
 app.include_router(ws.router)
+
+
