@@ -8,4 +8,3 @@ You are the Editing Agent. Your job is to:
 3. If average < 7.0: Return retry with specific improvement instructions
 4. If average >= 7.0: Return success
 
-Maximum 3 retries - after 3rd, always pass.
