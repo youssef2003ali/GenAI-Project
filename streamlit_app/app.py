@@ -1,24 +1,34 @@
-"""Streamlit frontend for the Agentic Content Generation System.
+"""Self-contained Streamlit frontend for the Agentic Content Generation System.
+
+Runs the multi-agent pipeline inline (no separate backend needed).
 
 Usage:
     streamlit run streamlit_app/app.py --server.port 8501
-
-Requires the backend running on port 8047 (or set API_BASE env var).
 """
 
+import asyncio
 import json
+import logging
 import os
+import sys
+import threading
 import time
-import urllib.parse
+import uuid
 
-import requests
 import streamlit as st
+
+# Ensure agent packages are importable
+_AGENTS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'packages', 'agents')
+if _AGENTS_PATH not in sys.path:
+    sys.path.insert(0, _AGENTS_PATH)
+
+from acs_shared.constants import AgentName, AgentStatus
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-
-API_BASE = os.getenv('API_BASE', 'http://localhost:8047')
 
 STAGES = [
     ('research',     '\U0001f50d', 'Research'),
@@ -28,44 +38,69 @@ STAGES = [
     ('optimization', '\u2728', 'Optimization'),
 ]
 
-AGENT_COLORS = {
-    'research': '#3b82f6',
-    'planning': '#a855f7',
-    'writing': '#22c55e',
-    'editing': '#f59e0b',
-    'optimization': '#ef4444',
-}
-
 # ---------------------------------------------------------------------------
-# API helpers
+# Inline pipeline runner (runs in background thread)
 # ---------------------------------------------------------------------------
 
-def submit_topic(topic: str) -> str:
-    """POST /generate, return job_id."""
-    resp = requests.post(
-        f'{API_BASE}/generate',
-        json={'topic': topic},
-        timeout=10,
-    )
-    resp.raise_for_status()
-    return resp.json()['job_id']
+def run_pipeline_inline(topic: str, state: dict, lock: threading.Lock) -> None:
+    """Run the agent pipeline and write progress into ``state``."""
+    async def _run():
+        from orchestrator.pipeline import PipelineRunner
+        from research.agent import ResearchAgent
+        from planning.agent import PlanningAgent
+        from writing.agent import WritingAgent
+        from editing.agent import EditingAgent
+        from optimization.agent import OptimizationAgent
 
+        runner = PipelineRunner()
+        runner.register_agent(AgentName.RESEARCH, ResearchAgent())
+        runner.register_agent(AgentName.PLANNING, PlanningAgent())
+        runner.register_agent(AgentName.WRITING, WritingAgent())
+        runner.register_agent(AgentName.EDITING, EditingAgent())
+        runner.register_agent(AgentName.OPTIMIZATION, OptimizationAgent())
 
-def poll_job(job_id: str) -> dict:
-    """GET /status/{job_id}. Returns status dict."""
-    resp = requests.get(f'{API_BASE}/status/{job_id}', timeout=5)
-    resp.raise_for_status()
-    return resp.json()
+        prev_agent = None
 
+        async def _on_agent_complete(agent_name, output_text, ctx):
+            nonlocal prev_agent
+            agent = agent_name.value if hasattr(agent_name, 'value') else str(agent_name)
+            with lock:
+                if prev_agent and prev_agent != agent:
+                    state['stage_status'][prev_agent] = 'completed'
+                state['stage_status'][agent] = 'active'
+                state['current_agent'] = agent
+                state['stage_outputs'][agent] = output_text
+            prev_agent = agent
 
-def fetch_result(job_id: str) -> dict:
-    """GET /result/{job_id}. Returns {status, final_output, context}."""
-    resp = requests.get(f'{API_BASE}/result/{job_id}', timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+        async def _on_chunk(agent_name, chunk, accumulated):
+            agent = agent_name.value if hasattr(agent_name, 'value') else str(agent_name)
+            with lock:
+                state['stage_outputs'][agent] = accumulated
+
+        try:
+            ctx = await runner.run(
+                job_id=state['job_id'], topic=topic,
+                progress_callback=_on_agent_complete,
+                chunk_callback=_on_chunk,
+            )
+            with lock:
+                if prev_agent:
+                    state['stage_status'][prev_agent] = 'completed'
+                state['status'] = 'completed'
+                state['final_output'] = ctx.final.content if ctx and ctx.final else ''
+                state['context'] = ctx.model_dump() if ctx else {}
+        except Exception as e:
+            with lock:
+                if prev_agent:
+                    state['stage_status'][prev_agent] = 'failed'
+                state['status'] = 'failed'
+                state['error'] = str(e)
+
+    asyncio.run(_run())
+
 
 # ---------------------------------------------------------------------------
-# Formatting helpers (mirrors Next.js extractAgentOutput)
+# Formatting helpers
 # ---------------------------------------------------------------------------
 
 def fmt_research(raw: str | dict) -> str:
@@ -150,13 +185,6 @@ def format_agent_output(agent: str, raw: str | dict) -> str:
     return str(raw)
 
 
-def context_get(ctx: dict, key: str):
-    """Safely get a key from context dict."""
-    if not ctx:
-        return None
-    return ctx.get(key)
-
-
 # ---------------------------------------------------------------------------
 # UI
 # ---------------------------------------------------------------------------
@@ -167,38 +195,39 @@ st.set_page_config(
     layout='wide',
 )
 
-# -- Dark theme by default --
+# Dark-theme custom CSS
 st.markdown("""
 <style>
-    .stage-row { display: flex; align-items: center; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin: 1rem 0; }
-    .stage-item { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.75rem 1rem; border-radius: 8px; background: #1e293b; border: 2px solid #475569; min-width: 90px; }
-    .stage-item.active { border-color: #f59e0b; background: rgba(245,158,11,0.1); }
-    .stage-item.completed { border-color: #22c55e; background: rgba(34,197,94,0.1); }
-    .stage-item.failed { border-color: #ef4444; background: rgba(239,68,68,0.1); }
-    .stage-icon { font-size: 1.5rem; }
-    .stage-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
-    .stage-arrow { color: #64748b; font-size: 1.25rem; }
-    .score-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem; }
-    .score-item { display: flex; flex-direction: column; align-items: center; padding: 0.75rem 1.25rem; background: #1e293b; border-radius: 8px; min-width: 90px; }
-    .score-value { font-size: 1.5rem; font-weight: 700; }
-    .score-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
+.stage-row { display: flex; align-items: center; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin: 1rem 0; }
+.stage-item { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; padding: 0.75rem 1rem; border-radius: 8px; background: #1e293b; border: 2px solid #475569; min-width: 90px; }
+.stage-item.active { border-color: #f59e0b; background: rgba(245,158,11,0.1); }
+.stage-item.completed { border-color: #22c55e; background: rgba(34,197,94,0.1); }
+.stage-item.failed { border-color: #ef4444; background: rgba(239,68,68,0.1); }
+.stage-icon { font-size: 1.5rem; }
+.stage-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.stage-arrow { color: #64748b; font-size: 1.25rem; }
+.score-row { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.score-item { display: flex; flex-direction: column; align-items: center; padding: 0.75rem 1.25rem; background: #1e293b; border-radius: 8px; min-width: 90px; }
+.score-value { font-size: 1.5rem; font-weight: 700; }
+.score-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
 </style>
 """, unsafe_allow_html=True)
 
 
 def render_pipeline(stage_status: dict):
     """Render horizontal pipeline stage indicators."""
-    cols = st.columns(len(STAGES) * 2 - 1)
-    col_idx = 0
+    n = len(STAGES)
+    cols = st.columns(n * 2 - 1)
+    idx = 0
     for i, (sid, icon, label) in enumerate(STAGES):
-        with cols[col_idx]:
-            status = stage_status.get(sid, 'pending')
+        with cols[idx]:
+            s = stage_status.get(sid, 'pending')
             cls = 'stage-item'
-            if status == 'active':
+            if s == 'active':
                 cls += ' active'
-            elif status == 'completed':
+            elif s == 'completed':
                 cls += ' completed'
-            elif status == 'failed':
+            elif s == 'failed':
                 cls += ' failed'
             st.markdown(
                 f'<div class="{cls}">'
@@ -207,18 +236,14 @@ def render_pipeline(stage_status: dict):
                 f'</div>',
                 unsafe_allow_html=True,
             )
-        col_idx += 1
-        if i < len(STAGES) - 1:
-            with cols[col_idx]:
-                st.markdown(
-                    '<div class="stage-arrow">\u2192</div>',
-                    unsafe_allow_html=True,
-                )
-            col_idx += 1
+        idx += 1
+        if i < n - 1:
+            with cols[idx]:
+                st.markdown('<div class="stage-arrow">\u2192</div>', unsafe_allow_html=True)
+            idx += 1
 
 
 def render_edit_scores(edit: dict | None):
-    """Render score cards when editing is done."""
     if not edit:
         return
     scores = edit.get('scores', {}) if isinstance(edit, dict) else {}
@@ -246,7 +271,7 @@ def render_edit_scores(edit: dict | None):
 
 
 # ---------------------------------------------------------------------------
-# Session state init
+# Session state
 # ---------------------------------------------------------------------------
 
 if 'job_id' not in st.session_state:
@@ -263,18 +288,19 @@ if 'status' not in st.session_state:
     st.session_state.status = 'idle'
 if 'error' not in st.session_state:
     st.session_state.error = None
+if 'thread' not in st.session_state:
+    st.session_state.thread = None
+if 'pipeline_state' not in st.session_state:
+    st.session_state.pipeline_state = None
+if 'pipeline_lock' not in st.session_state:
+    st.session_state.pipeline_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
 
 st.title('\U0001f916 Agentic Content System')
-
-# -- Status badge --
-if st.session_state.job_id:
-    st.caption(f'Job: {st.session_state.job_id[:8]}...')
-else:
-    st.caption('Ready')
+st.caption('Ready' if not st.session_state.job_id else f'Job: {st.session_state.job_id[:8]}...')
 
 # ---------------------------------------------------------------------------
 # Input
@@ -293,12 +319,10 @@ with st.form('topic_form', clear_on_submit=False):
     )
 
 # ---------------------------------------------------------------------------
-# Pipeline execution
+# Start pipeline on submit
 # ---------------------------------------------------------------------------
 
 if submitted and topic:
-    # Reset state
-    st.session_state.job_id = None
     st.session_state.stage_status = {s[0]: 'pending' for s in STAGES}
     st.session_state.stage_outputs = {}
     st.session_state.final_output = None
@@ -306,85 +330,87 @@ if submitted and topic:
     st.session_state.status = 'running'
     st.session_state.error = None
 
-    try:
-        job_id = submit_topic(topic)
-        st.session_state.job_id = job_id
-        st.caption(f'Job: {job_id[:8]}...')
+    job_id = str(uuid.uuid4())
+    st.session_state.job_id = job_id
 
-        # Poll loop
-        placeholder = st.empty()
-        prev_agent = None
+    # Shared state dict the background thread writes to
+    shared = {
+        'job_id': job_id,
+        'status': 'running',
+        'current_agent': None,
+        'stage_status': {s[0]: 'pending' for s in STAGES},
+        'stage_outputs': {},
+        'final_output': None,
+        'context': None,
+        'error': None,
+    }
+    st.session_state.pipeline_state = shared
 
-        while True:
-            data = poll_job(job_id)
-            s = data.get('status', 'unknown')
+    # Launch pipeline in background thread
+    thread = threading.Thread(
+        target=run_pipeline_inline,
+        args=(topic, shared, st.session_state.pipeline_lock),
+        daemon=True,
+    )
+    thread.start()
+    st.session_state.thread = thread
 
-            if s == 'running':
-                agent = data.get('current_agent')
-                if agent and agent != prev_agent:
-                    if prev_agent:
-                        st.session_state.stage_status[prev_agent] = 'completed'
-                    st.session_state.stage_status[agent] = 'active'
-                    prev_agent = agent
+    st.rerun()
 
-            elif s == 'completed':
-                if prev_agent:
-                    st.session_state.stage_status[prev_agent] = 'completed'
-                st.session_state.status = 'completed'
+# ---------------------------------------------------------------------------
+# Poll pipeline state and update UI
+# ---------------------------------------------------------------------------
 
-                result = fetch_result(job_id)
-                st.session_state.final_output = result.get('final_output')
-                st.session_state.context = result.get('context')
-                break
+if st.session_state.status == 'running':
+    shared = st.session_state.pipeline_state
+    if shared:
+        lock = st.session_state.pipeline_lock
+        with lock:
+            # Copy latest from background thread
+            st.session_state.stage_status = dict(shared.get('stage_status', {}))
+            st.session_state.stage_outputs = dict(shared.get('stage_outputs', {}))
+            new_status = shared.get('status', 'running')
 
-            elif s == 'failed':
-                if prev_agent:
-                    st.session_state.stage_status[prev_agent] = 'failed'
-                st.session_state.status = 'failed'
-                st.session_state.error = data.get('progress', {}).get('error', 'Pipeline failed')
-                break
+        if new_status == 'completed':
+            with lock:
+                st.session_state.final_output = shared.get('final_output')
+                st.session_state.context = shared.get('context')
+            st.session_state.status = 'completed'
+            st.session_state.thread = None
+            st.rerun()
+        elif new_status == 'failed':
+            with lock:
+                st.session_state.error = shared.get('error', 'Pipeline failed')
+            st.session_state.status = 'failed'
+            st.session_state.thread = None
+            st.rerun()
 
-            # Re-render pipeline
-            with placeholder.container():
-                render_pipeline(st.session_state.stage_status)
-
-            time.sleep(2)
-
-        # Final render after loop
-        st.rerun()
-
-    except requests.RequestException as e:
-        st.session_state.status = 'failed'
-        st.session_state.error = f'Connection error: {e}'
-        st.rerun()
+    # Re-run after 2s to check again
+    time.sleep(2)
+    st.rerun()
 
 # ---------------------------------------------------------------------------
 # Display
 # ---------------------------------------------------------------------------
 
-# Pipeline visualization
 render_pipeline(st.session_state.stage_status)
 
-# Error
 if st.session_state.error:
     st.error(st.session_state.error)
 
-# Stage output panels
+# Stage output expanders
 if st.session_state.stage_outputs or st.session_state.context:
     st.markdown('### Agent Outputs')
-
     ctx = st.session_state.context or {}
-
     agent_map = {
-        'research': ('research', '🔍 Research'),
-        'planning': ('outline', '📋 Outline'),
-        'writing': ('draft', '✍️ Draft'),
-        'editing': ('edit', '📝 Editing Scores'),
-        'optimization': ('final', '✨ Final'),
+        'research': ('research', '\U0001f50d Research'),
+        'planning': ('outline', '\U0001f4cb Outline'),
+        'writing': ('draft', '\u270d\ufe0f Draft'),
+        'editing': ('edit', '\U0001f4dd Editing Scores'),
+        'optimization': ('final', '\u2728 Final'),
     }
-
     for agent_id, (ctx_key, panel_title) in agent_map.items():
-        raw = context_get(ctx, ctx_key)
+        raw = ctx.get(ctx_key)
         if not raw and agent_id in st.session_state.stage_outputs:
             raw = st.session_state.stage_outputs[agent_id]
         if raw:
@@ -393,12 +419,12 @@ if st.session_state.stage_outputs or st.session_state.context:
                 st.markdown(formatted)
 
 # Edit scores
-edit = context_get(st.session_state.context, 'edit')
+edit = (st.session_state.context or {}).get('edit')
 if edit:
     render_edit_scores(edit)
 
 # Final output
 if st.session_state.final_output:
     st.markdown('---')
-    st.markdown('### ✅ Final Output')
+    st.markdown('### \u2705 Final Output')
     st.markdown(st.session_state.final_output)
