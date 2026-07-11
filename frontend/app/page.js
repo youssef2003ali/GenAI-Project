@@ -23,8 +23,19 @@ export default function Home() {
     try {
       const parsed = JSON.parse(output);
       switch (agent) {
-        case 'research':
-          return parsed.summary || parsed.raw || output;
+        case 'research': {
+          let rt = `${parsed.summary || ''}\n\n`;
+          if (parsed.facts?.length) {
+            rt += `**Key Facts**\n`;
+            parsed.facts.forEach(f => { rt += `- ${f}\n`; });
+            rt += '\n';
+          }
+          if (parsed.sources?.length) {
+            rt += `**Sources**\n`;
+            parsed.sources.forEach(s => { rt += `- ${s}\n`; });
+          }
+          return rt.trim() || output;
+        }
         case 'planning':
           let ot = `# ${parsed.title || ''}\n\n`;
           (parsed.sections || []).forEach(s => {
