@@ -1,4 +1,4 @@
-﻿import json
+import json
 import time
 from acs_shared.base_agent import BaseAgent
 from acs_shared.constants import AgentName, AgentStatus
