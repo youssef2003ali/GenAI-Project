@@ -129,10 +129,10 @@ async def scrape_content(url: str) -> str:
                 async with ClientSession(read, write) as session:
                     await session.initialize()
 
-                    content = await _call_tool(session, 'get', url)
+                    content = await _call_tool(session, 'make_request', url)
                     if not content:
-                        logger.info(f"'get' returned nothing for {url}, escalating to 'fetch'")
-                        content = await _call_tool(session, 'fetch', url)
+                        logger.info(f"HTTP request returned nothing for {url}, escalating to JS-rendered fetch")
+                        content = await _call_tool(session, 'browser_fetch_once', url)
 
         if content:
             content = _extract_prose(content)

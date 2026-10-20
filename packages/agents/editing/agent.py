@@ -68,7 +68,7 @@ Issues:
                 input.context.edit.retry_count
                 if input.context.edit
                 else 0
-            )
+            ) + 1
 
            
             edit_output = EditOutput(

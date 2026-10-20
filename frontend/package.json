@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "powershell -c \"$p = (Select-String '^FRONTEND_PORT=(.+)' '../.env' | % { $_.Matches.Groups[1].Value }); if (!$p) { $p = '3047' }; next dev -p $p\"",
+    "dev": "powershell -ExecutionPolicy Bypass -c \"$p = (Select-String '^FRONTEND_PORT=(.+)' '../.env' | % { $_.Matches.Groups[1].Value }); if (!$p) { $p = '3047' }; next dev -p $p\"",
     "build": "next build",
     "start": "next start"
   },

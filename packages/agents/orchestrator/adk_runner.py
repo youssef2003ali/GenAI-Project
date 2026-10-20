@@ -85,11 +85,11 @@ class ACSAgent(ADKAgent):
             topic=ctx.session.state.get('topic', ''),
             context=pipeline_ctx,
             config=AgentConfig(
-                provider=Provider.MISTRAL,
+                provider=Provider.GEMINI,
                 model=(
                     getattr(settings, f'{self._acs.name.value}_model', None)
                     or (AGENT_MODELS.get(self._acs.name).value if AGENT_MODELS.get(self._acs.name) else None)
-                    or settings.mistral_model
+                    or settings.gemini_model
                 ),
             ),
         )

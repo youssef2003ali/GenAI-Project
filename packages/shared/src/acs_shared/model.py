@@ -7,9 +7,12 @@ OpenRouter, Ollama, and 100+ providers through a unified API.
 """
 
 import asyncio
+import logging
 import os
 import time
 from .settings import settings
+
+logger = logging.getLogger(__name__)
 
 # Shorten LiteLLM's generous default timeouts so the dummy
 # fallback kicks in quickly during development / testing.
@@ -86,8 +89,11 @@ class AgentModel:
                 num_retries=0,
             )
             return response.choices[0].message.content or ''
-        except Exception:
-            # Graceful fallback — useful during development / demo
+        except Exception as exc:
+            logger.warning(
+                f'LLM call failed ({self.provider}/{self.model}): {exc} '
+                '— using dummy fallback output'
+            )
             await asyncio.sleep(0.1)
             return (
                 f'[Dummy from {self.provider}/{self.model}]: '
@@ -122,7 +128,11 @@ class AgentModel:
                 if delta:
                     accumulated += delta
                     yield (delta, accumulated)
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                f'LLM stream failed ({self.provider}/{self.model}): {exc} '
+                '— falling back to non-streaming generate'
+            )
             full = await self.generate(prompt)
             yield (full, full)
 
